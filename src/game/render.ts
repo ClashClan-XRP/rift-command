@@ -195,8 +195,15 @@ export function drawWorld(
   for (const b of world.buildings) {
     if (b.x < viewL - 80 || b.y < viewT - 80 || b.x > viewR + 80 || b.y > viewB + 80) continue;
     drawBuilding(ctx, b.type, b.x, b.y, b.w, b.h, b.owner, b.progress, selBuildings.has(b.id));
-    if (b.hp < b.maxHp || selBuildings.has(b.id))
+    if (b.progress < 1) {
+      bar(ctx, b.x, b.y - b.h * CELL * 0.55, b.progress, b.w * CELL * 0.8);
+      ctx.fillStyle = "#f4f4f5";
+      ctx.font = "700 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(`${(b.progress * 100) | 0}%`, b.x, b.y - b.h * CELL * 0.55 - 6);
+    } else if (b.hp < b.maxHp || selBuildings.has(b.id)) {
       bar(ctx, b.x, b.y - b.h * CELL * 0.55, b.hp / b.maxHp, b.w * CELL * 0.8);
+    }
     if (b.queue.length && b.owner === localOwner) {
       ctx.fillStyle = "rgba(197,205,216,0.85)";
       ctx.font = "10px IBM Plex Sans";
@@ -206,10 +213,23 @@ export function drawWorld(
   }
 
   if (ghost) {
-    ctx.globalAlpha = 0.45;
-    ctx.fillStyle = ghost.ok ? "rgba(110,163,122,0.7)" : "rgba(196,92,74,0.7)";
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = ghost.ok ? "rgba(110,163,122,0.85)" : "rgba(196,92,74,0.85)";
     ctx.fillRect(ghost.gx * CELL, ghost.gy * CELL, ghost.w * CELL, ghost.h * CELL);
     ctx.globalAlpha = 1;
+    ctx.strokeStyle = ghost.ok ? "#8fca98" : "#d07a6c";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(ghost.gx * CELL + 1, ghost.gy * CELL + 1, ghost.w * CELL - 2, ghost.h * CELL - 2);
+    ctx.font = "700 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#f4f4f5";
+    ctx.fillText(
+      ghost.ok ? "PLACE" : "BLOCKED",
+      ghost.gx * CELL + (ghost.w * CELL) / 2,
+      ghost.gy * CELL + (ghost.h * CELL) / 2 + 4,
+    );
+    ctx.restore();
   }
 
   for (const u of world.units) {

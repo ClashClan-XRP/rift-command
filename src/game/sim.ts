@@ -187,9 +187,10 @@ export class World {
 
   canPlace(gx: number, gy: number, bw: number, bh: number, owner: number): boolean {
     const { map } = this;
+    if (bw < 1 || bh < 1) return false;
+    if (gx < 0 || gy < 0 || gx + bw > map.w || gy + bh > map.h) return false;
     for (let y = gy; y < gy + bh; y++) {
       for (let x = gx; x < gx + bw; x++) {
-        if (x < 1 || y < 1 || x >= map.w - 1 || y >= map.h - 1) return false;
         const i = y * map.w + x;
         const t = map.tiles[i];
         if (t === TILE_VOID) return false;
@@ -199,6 +200,27 @@ export class World {
       }
     }
     return true;
+  }
+
+  findPlace(
+    gx: number,
+    gy: number,
+    bw: number,
+    bh: number,
+    owner: number,
+    radius = 6,
+  ): { gx: number; gy: number } | null {
+    for (let r = 0; r <= radius; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          if (this.canPlace(gx + dx, gy + dy, bw, bh, owner)) {
+            return { gx: gx + dx, gy: gy + dy };
+          }
+        }
+      }
+    }
+    return null;
   }
 
   markOcc(b: Building, on: boolean) {
@@ -322,7 +344,10 @@ export class World {
     const def = BUILDINGS[btype];
     const p = this.players[owner];
     if (p.ore < def.ore || p.flux < def.flux) return;
-    if (!this.canPlace(gx, gy, def.w, def.h, owner)) return;
+    const spot = this.findPlace(gx, gy, def.w, def.h, owner, 6);
+    if (!spot) return;
+    gx = spot.gx;
+    gy = spot.gy;
     p.ore -= def.ore;
     p.flux -= def.flux;
     const b = this.placeBuilding(owner, btype, gx, gy, false);
@@ -336,8 +361,9 @@ export class World {
     u.buildGx = gx;
     u.buildGy = gy;
     u.targetId = b.id;
+    u.nodeId = -1;
+    u.path = null;
     b.builderId = u.id;
-    this.pathUnit(u, b.x, b.y);
     this.events.push("build");
   }
 
@@ -446,7 +472,8 @@ export class World {
       const race = raceOf(this.players[b.owner].race);
       if (b.progress < 1) {
         const builder = this.units.find((u) => u.id === b.builderId && u.hp > 0);
-        if (builder && dist2(builder.x, builder.y, b.x, b.y) < 46 * 46) {
+        const reach = this.buildReach(b);
+        if (builder && dist2(builder.x, builder.y, b.x, b.y) <= reach * reach) {
           const def = BUILDINGS[b.type];
           b.progress = Math.min(1, b.progress + TICK / (def.build * race.build));
           b.hp = Math.min(b.maxHp, b.hp + (b.maxHp * TICK) / (def.build * race.build));
@@ -504,8 +531,12 @@ export class World {
         const b = this.buildings.find((x) => x.id === u.targetId);
         if (!b || b.progress >= 1) {
           u.order = "idle";
-        } else if (dist2(u.x, u.y, b.x, b.y) > 42 * 42) {
-          this.followPath(u);
+        } else {
+          const reach = this.buildReach(b);
+          if (dist2(u.x, u.y, b.x, b.y) > reach * reach) {
+            const sit = this.sitRing(b.x, b.y, this.buildReach(b) * 0.72, u.id, 8);
+            this.steerToward(u, sit.x, sit.y);
+          }
         }
         continue;
       }
@@ -759,6 +790,33 @@ export class World {
     return null;
   }
 
+  private buildReach(b: Building) {
+    return Math.max(b.w, b.h) * CELL * 0.5 + 40;
+  }
+
+  private sitRing(cx: number, cy: number, r: number, slot: number, slots: number) {
+    const ang = ((slot % slots) / slots) * Math.PI * 2;
+    return { x: cx + Math.cos(ang) * r, y: cy + Math.sin(ang) * r };
+  }
+
+  private steerToward(u: Unit, tx: number, ty: number) {
+    const race = raceOf(this.players[u.owner].race);
+    const speed = UNITS[u.type].speed * race.speed;
+    const dx = tx - u.x;
+    const dy = ty - u.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const step = speed * TICK;
+    if (d <= step + 2) {
+      u.x = tx;
+      u.y = ty;
+    } else {
+      u.x += (dx / d) * step;
+      u.y += (dy / d) * step;
+    }
+    u.facing = Math.atan2(dy, dx);
+    u.path = null;
+  }
+
   private followPath(u: Unit) {
     if (!u.path || u.pathI >= u.path.length) {
       u.path = null;
@@ -794,6 +852,7 @@ export class World {
       if (a.hp <= 0 || a.air) continue;
       this.queryNear(a.x, a.y, 28, (b) => {
         if (b.id === a.id || b.air || b.hp <= 0) return;
+        if (a.order === "build" || b.order === "build") return;
         const d2 = dist2(a.x, a.y, b.x, b.y);
         const min = a.radius + b.radius;
         if (d2 > 0 && d2 < min * min) {

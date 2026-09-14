@@ -336,14 +336,21 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
           onWheel={onWheel}
           onContextMenu={(e) => e.preventDefault()}
         />
-        {!selU.length && !selB[0] && !help && (
+        {s?.mode === "build" && s.buildType && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
+            <p className="rounded-full bg-ok/25 px-3 py-1.5 text-center text-[12px] text-fg shadow">
+              Tap the map to place {BUILDINGS[s.buildType].name} · green footprint = valid
+            </p>
+          </div>
+        )}
+        {!selU.length && !selB[0] && !help && s?.mode !== "build" && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
             <p className="rounded-full bg-surface/90 px-3 py-1.5 text-center text-[12px] text-fg shadow">
               TAP a glowing rigger · DRAG to pan · PINCH to zoom
             </p>
           </div>
         )}
-        {!!selU.length && (
+        {!!selU.length && s?.mode !== "build" && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
             <p className="rounded-full bg-ok/20 px-3 py-1.5 text-center text-[12px] text-fg shadow">
               {workerOn
@@ -395,11 +402,13 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
         >
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="truncate text-xs text-muted">
-              {selU.length
-                ? `${selU.length} selected — tap the map to order`
-                : selB[0]
-                  ? `${BUILDINGS[selB[0].type].name} — tap a card to train`
-                  : "Tap a unit · drag to pan · pinch to zoom"}
+              {s?.mode === "build" && s.buildType
+                ? `Tap the map to place ${BUILDINGS[s.buildType].name} (green = ok)`
+                : selU.length
+                  ? `${selU.length} selected — tap the map to order`
+                  : selB[0]
+                    ? `${BUILDINGS[selB[0].type].name} — tap a card to train`
+                    : "Tap a unit · drag to pan · pinch to zoom"}
             </p>
             <div className="flex gap-1">
               <IconBtn
@@ -429,7 +438,9 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
 
           <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
             {workerOn &&
-              (Object.keys(BUILDINGS) as BuildingType[]).map((t) => (
+              (Object.keys(BUILDINGS) as BuildingType[])
+                .filter((t) => t !== "core")
+                .map((t) => (
                 <Cmd
                   key={t}
                   src={BUILDING_SPRITE[t]}

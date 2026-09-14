@@ -98,12 +98,13 @@ export class Session {
     unlockAudio();
     if (this.mode === "build" && this.buildType) {
       const def = BUILDINGS[this.buildType];
-      const gx = (x / CELL) | 0;
-      const gy = (y / CELL) | 0;
+      const gx = Math.round(x / CELL - def.w / 2);
+      const gy = Math.round(y / CELL - def.h / 2);
       const worker = this.selectedWorkers()[0];
-      if (worker) {
-        this.issue({ k: "build", workerId: worker.id, btype: this.buildType, gx, gy });
-      }
+      if (!worker) return;
+      const spot = this.world.findPlace(gx, gy, def.w, def.h, this.localOwner, 6);
+      if (!spot) return;
+      this.issue({ k: "build", workerId: worker.id, btype: this.buildType, gx: spot.gx, gy: spot.gy });
       this.mode = "pan";
       this.buildType = null;
       this.ghost = null;
@@ -208,6 +209,7 @@ export class Session {
   beginBuild(type: BuildingType) {
     this.mode = "build";
     this.buildType = type;
+    this.updateGhost(this.cam.x, this.cam.y);
   }
 
   stop() {
@@ -224,14 +226,13 @@ export class Session {
       return;
     }
     const def = BUILDINGS[this.buildType];
-    const gx = (x / CELL) | 0;
-    const gy = (y / CELL) | 0;
-    this.ghost = {
-      gx,
-      gy,
-      w: def.w,
-      h: def.h,
-      ok: this.world.canPlace(gx, gy, def.w, def.h, this.localOwner),
-    };
+    const gx = Math.round(x / CELL - def.w / 2);
+    const gy = Math.round(y / CELL - def.h / 2);
+    const spot = this.world.findPlace(gx, gy, def.w, def.h, this.localOwner, 3);
+    if (spot) {
+      this.ghost = { gx: spot.gx, gy: spot.gy, w: def.w, h: def.h, ok: true };
+    } else {
+      this.ghost = { gx, gy, w: def.w, h: def.h, ok: false };
+    }
   }
 }
