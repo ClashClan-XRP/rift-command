@@ -119,15 +119,8 @@ export class Session {
       return;
     }
     const slop = 36;
-    const node = this.world.nodeAt(x, y, 52);
-    if (node) {
-      const nd = (x - node.x) ** 2 + (y - node.y) ** 2;
-      const onCrystal = nd <= 32 * 32;
-      const workersOn = this.selectedWorkers().length > 0;
-      if (onCrystal || workersOn) {
-        if (this.sendToNode(node)) return;
-      }
-    }
+    const node = this.world.nodeAt(x, y, 26);
+    if (node && this.sendToNode(node)) return;
     const mine = this.world.unitAt(x, y, this.localOwner, slop);
     const anyU = this.world.unitAt(x, y, undefined, slop);
     const b = this.world.buildingAt(x, y);
@@ -168,6 +161,7 @@ export class Session {
   sendToNode(node: { id: number; x: number; y: number }) {
     let workers = this.selectedWorkers();
     if (!workers.length) {
+      if (this.selUnits.size > 0) return false;
       workers = this.world.units
         .filter(
           (u) =>

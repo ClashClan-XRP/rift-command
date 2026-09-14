@@ -106,6 +106,11 @@ export class World {
         if (u) {
           u.maxHp = Math.round(u.maxHp * race.hp);
           u.hp = u.maxHp;
+          const node = this.nearestNode(u.x, u.y, 1);
+          if (node) {
+            u.order = "gather";
+            u.nodeId = node.id;
+          }
         }
       }
     });
@@ -528,13 +533,6 @@ export class World {
         if (!u.path) u.order = "idle";
         continue;
       }
-      if (u.type === "worker" && u.order === "idle" && !u.cargo) {
-        const node = this.nearestNode(u.x, u.y, 1);
-        if (node && dist2(u.x, u.y, node.x, node.y) < 220 * 220) {
-          u.order = "gather";
-          u.nodeId = node.id;
-        }
-      }
     }
   }
 
@@ -556,6 +554,10 @@ export class World {
       u.facing = Math.atan2(dy, dx);
       u.path = null;
     };
+    const ring = (cx: number, cy: number, r: number, slot: number, slots: number) => {
+      const ang = ((slot % slots) / slots) * Math.PI * 2;
+      return { x: cx + Math.cos(ang) * r, y: cy + Math.sin(ang) * r };
+    };
 
     if (u.cargo) {
       const core = this.nearestCore(u.owner, u.x, u.y);
@@ -563,7 +565,8 @@ export class World {
         u.order = "idle";
         return;
       }
-      if (dist2(u.x, u.y, core.x, core.y) < 80 * 80) {
+      const drop = ring(core.x, core.y, Math.max(core.w, core.h) * CELL * 0.62, u.id, 8);
+      if (dist2(u.x, u.y, core.x, core.y) < 92 * 92) {
         const p = this.players[u.owner];
         if (u.cargo === 1) p.ore += HARVEST_ORE;
         else p.flux += HARVEST_FLUX;
@@ -571,13 +574,10 @@ export class World {
         u.harvest = 0;
         this.events.push("harvest");
         const node = this.nodes.find((n) => n.id === u.nodeId) ?? this.nearestNode(u.x, u.y);
-        if (node) {
-          u.nodeId = node.id;
-          steer(node.x, node.y);
-        }
+        if (node) u.nodeId = node.id;
         return;
       }
-      steer(core.x, core.y);
+      steer(drop.x, drop.y);
       return;
     }
     const node = this.nodes.find((n) => n.id === u.nodeId) ?? this.nearestNode(u.x, u.y);
@@ -586,17 +586,16 @@ export class World {
       return;
     }
     u.nodeId = node.id;
-    if (dist2(u.x, u.y, node.x, node.y) < 72 * 72) {
+    const sit = ring(node.x, node.y, 22, u.id, 8);
+    if (dist2(u.x, u.y, node.x, node.y) < 56 * 56) {
       u.path = null;
       u.harvest += TICK;
       if (u.harvest >= HARVEST_TIME) {
         u.cargo = node.kind;
         u.harvest = 0;
-        const core = this.nearestCore(u.owner, u.x, u.y);
-        if (core) steer(core.x, core.y);
       }
     } else {
-      steer(node.x, node.y);
+      steer(sit.x, sit.y);
     }
   }
 

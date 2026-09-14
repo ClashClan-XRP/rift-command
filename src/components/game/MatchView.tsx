@@ -28,7 +28,7 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
   const miniRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const sessRef = useRef<Session | null>(null);
-  const dragRef = useRef({ x: 0, y: 0, dist: 0 });
+  const dragRef = useRef({ x: 0, y: 0, dist: 0, wx: 0, wy: 0 });
   const endSound = useRef(false);
   const [hud, setHud] = useState(0);
   const [menu, setMenu] = useState(false);
@@ -198,7 +198,7 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
         /* iOS Safari can reject capture */
       }
       s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      dragRef.current = { x: e.clientX, y: e.clientY, dist: 0 };
+      dragRef.current = { x: e.clientX, y: e.clientY, dist: 0, wx: wpt.x, wy: wpt.y };
       if (!touch && e.button === 0 && s.mode !== "build" && s.mode !== "attack") {
         s.box = { x0: wpt.x, y0: wpt.y, x1: wpt.x, y1: wpt.y };
       }
@@ -224,7 +224,7 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
         s.box.y1 = wpt.y;
       } else if (
         prev &&
-        dragRef.current.dist > (touch ? 18 : 6) &&
+        dragRef.current.dist > (touch ? 48 : 14) &&
         (touch || e.buttons === 2 || e.buttons === 4 || s.mode === "pan")
       ) {
         s.cam.x -= (e.clientX - prev.x) / s.cam.z;
@@ -239,11 +239,13 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
       if (s.box) {
         s.boxSelect(s.box.x0, s.box.y0, s.box.x1, s.box.y1, e.shiftKey);
         const tiny = Math.hypot(s.box.x1 - s.box.x0, s.box.y1 - s.box.y0) < 12;
-        if (tiny) s.tapWorld(wpt.x, wpt.y, e.shiftKey);
+        if (tiny) s.tapWorld(s.box.x0, s.box.y0, e.shiftKey);
         s.box = null;
       } else if (!dragged || s.mode === "build" || s.mode === "attack") {
-        if (!touch && e.button === 2) s.tapWorld(wpt.x, wpt.y, false);
-        else if (touch || e.button === 0) s.tapWorld(wpt.x, wpt.y, e.shiftKey);
+        const tx = dragRef.current.wx;
+        const ty = dragRef.current.wy;
+        if (!touch && e.button === 2) s.tapWorld(tx, ty, false);
+        else if (touch || e.button === 0) s.tapWorld(tx, ty, e.shiftKey);
       }
       setHud((n) => n + 1);
     }
@@ -345,8 +347,8 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
           <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
             <p className="rounded-full bg-ok/20 px-3 py-1.5 text-center text-[12px] text-fg shadow">
               {workerOn
-                ? "Tap a crystal (the ice patches) — riggers will mine it"
-                : "Tap ground to move · crosshair then tap to attack"}
+                ? "Tap empty ground to move · tap a crystal to mine · tap the nexus to train"
+                : "Tap empty ground to move · crosshair then tap to attack"}
             </p>
           </div>
         )}
