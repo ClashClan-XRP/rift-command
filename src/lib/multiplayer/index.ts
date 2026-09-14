@@ -5,6 +5,7 @@ export type {
   PeerInfo,
   P2PRoomOptions,
   SignalKind,
+  SignalingPath,
   PeerRow,
   SignalRow,
   RtcPollResponse,

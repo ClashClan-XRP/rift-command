@@ -10,7 +10,7 @@ Add that link to your Home Screen (Safari → Share → Add to Home Screen) for 
 
 **Source:** [github.com/ClashClan-XRP/rift-command](https://github.com/ClashClan-XRP/rift-command)
 
-Skirmish vs computer is fully playable on that GitHub Pages link. Friend rooms that join across two phones need the published Grok app (a tiny handshake server GitHub Pages cannot run). You can still fill seats with computer opponents on Pages.
+Skirmish vs computer is fully playable on that GitHub Pages link. Friend rooms now handshake over a public mesh, then game traffic goes phone-to-phone (WebRTC). Strict carrier NATs can still fail a pair — retry on Wi-Fi or fill that seat with a computer.
 
 ## Play
 

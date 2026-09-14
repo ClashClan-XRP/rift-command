@@ -223,7 +223,17 @@ export function Lobby({ code }: { code: string }) {
         </div>
         <p className="text-sm text-muted">
           {isHost ? "You lead the table. Pick map, mode, and who sits where." : "Waiting on the host to set the field."}
+          {p2p.joined
+            ? p2p.path === "mqtt"
+              ? " Handshake is public mesh — game traffic is phone-to-phone."
+              : " Handshake is on this app — game traffic is phone-to-phone."
+            : ""}
         </p>
+        {p2p.peers.some((p) => p.connectionState === "failed") ? (
+          <p className="text-xs text-danger">
+            One seat could not punch through. Ask them to retry on Wi-Fi, or keep the computer seats.
+          </p>
+        ) : null}
 
         <div className="flex gap-2">
           <Button

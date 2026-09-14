@@ -3,7 +3,7 @@
  * (useState initializers) so re-renders never tear down the mesh.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { P2PRoom, type PeerInfo } from "./p2p";
+import { P2PRoom, type PeerInfo, type SignalingPath } from "./p2p";
 
 export interface UseP2PRoomOptions {
   room?: string;
@@ -15,6 +15,7 @@ export interface P2PRoomHandle {
   room: string;
   peers: PeerInfo[];
   joined: boolean;
+  path: SignalingPath;
   broadcast: (data: unknown) => void;
   send: (data: unknown, peerId?: string) => void;
   onMessage: (
@@ -33,6 +34,7 @@ export function useP2PRoom(options: UseP2PRoomOptions = {}): P2PRoomHandle {
   const [name] = useState(() => options.name ?? selfId);
   const [peers, setPeers] = useState<PeerInfo[]>([]);
   const [joined, setJoined] = useState(false);
+  const [path, setPath] = useState<SignalingPath>("unknown");
   const roomRef = useRef<P2PRoom | null>(null);
   const listeners = useRef(
     new Set<(from: string, data: unknown, channel: "state" | "reliable") => void>(),
@@ -43,11 +45,17 @@ export function useP2PRoom(options: UseP2PRoomOptions = {}): P2PRoomHandle {
       room,
       selfId,
       name,
-      onPeersChanged: setPeers,
+      onPeersChanged: (next) => {
+        setPeers(next);
+        setPath(p2p.signalingPath());
+      },
       onMessage: (from, data, channel) => {
         for (const fn of listeners.current) fn(from, data, channel);
       },
-      onConnected: () => setJoined(true),
+      onConnected: () => {
+        setJoined(true);
+        setPath(p2p.signalingPath());
+      },
     });
     roomRef.current = p2p;
     void p2p.join();
@@ -72,5 +80,5 @@ export function useP2PRoom(options: UseP2PRoomOptions = {}): P2PRoomHandle {
     [],
   );
 
-  return { selfId, room, peers, joined, broadcast, send, onMessage };
+  return { selfId, room, peers, joined, path, broadcast, send, onMessage };
 }
