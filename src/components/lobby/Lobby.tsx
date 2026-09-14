@@ -143,7 +143,9 @@ export function Lobby({ code }: { code: string }) {
 
   const share = useMemo(() => {
     if (typeof window === "undefined") return code;
-    return `${window.location.origin}/room/${code}`;
+    const root = import.meta.env.BASE_URL || "/";
+    const path = `${root}room/${code}`.replace(/\/{2,}/g, "/");
+    return `${window.location.origin}${path}`;
   }, [code]);
 
   const patch = (next: LobbyState) => {

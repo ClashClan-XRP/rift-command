@@ -1,4 +1,11 @@
-import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+import { useEffect } from "react";
+import {
+  createRootRoute,
+  HeadContent,
+  Outlet,
+  Scripts,
+  useNavigate,
+} from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
@@ -6,6 +13,21 @@ import appCss from "../styles.css?url";
 const APP_NAME = "Rift Command";
 const base = import.meta.env.BASE_URL || "/";
 const asset = (path: string) => `${base}${path.replace(/^\//, "")}`;
+
+export function NotFound() {
+  const nav = useNavigate();
+  useEffect(() => {
+    nav({ to: "/", replace: true });
+  }, [nav]);
+  return (
+    <div className="flex min-h-dvh flex-col items-start gap-3 bg-bg px-5 pt-[max(24px,env(safe-area-inset-top))] text-fg">
+      <p className="text-sm text-muted">Taking you back to Rift Command…</p>
+      <button type="button" className="text-accent underline" onClick={() => nav({ to: "/" })}>
+        Open menu
+      </button>
+    </div>
+  );
+}
 
 export const Route = createRootRoute({
   head: () => ({
@@ -25,6 +47,7 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#09090b" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-title", content: APP_NAME },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: asset("favicon.svg") },
@@ -39,6 +62,7 @@ export const Route = createRootRoute({
       },
     ],
   }),
+  notFoundComponent: NotFound,
   component: () => (
     <html lang="en" suppressHydrationWarning>
       <head>

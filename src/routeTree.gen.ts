@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SplatRouteImport } from './routes/$'
 import { Route as ApiRtcRouteImport } from './routes/api/rtc'
 import { Route as RoomCodeRouteImport } from './routes/room.$code'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SplatRoute = SplatRouteImport.update({
+  id: '/$',
+  path: '/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiRtcRoute = ApiRtcRouteImport.update({
@@ -31,30 +37,34 @@ const RoomCodeRoute = RoomCodeRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/api/rtc': typeof ApiRtcRoute
   '/room/$code': typeof RoomCodeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/api/rtc': typeof ApiRtcRoute
   '/room/$code': typeof RoomCodeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/$': typeof SplatRoute
   '/api/rtc': typeof ApiRtcRoute
   '/room/$code': typeof RoomCodeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/rtc' | '/room/$code'
+  fullPaths: '/' | '/$' | '/api/rtc' | '/room/$code'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/rtc' | '/room/$code'
-  id: '__root__' | '/' | '/api/rtc' | '/room/$code'
+  to: '/' | '/$' | '/api/rtc' | '/room/$code'
+  id: '__root__' | '/' | '/$' | '/api/rtc' | '/room/$code'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SplatRoute: typeof SplatRoute
   ApiRtcRoute: typeof ApiRtcRoute
   RoomCodeRoute: typeof RoomCodeRoute
 }
@@ -66,6 +76,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$': {
+      id: '/$'
+      path: '/$'
+      fullPath: '/$'
+      preLoaderRoute: typeof SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/rtc': {
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SplatRoute: SplatRoute,
   ApiRtcRoute: ApiRtcRoute,
   RoomCodeRoute: RoomCodeRoute,
 }
