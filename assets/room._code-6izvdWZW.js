@@ -1,0 +1,1 @@
+import{i as e}from"./useNavigate-CXqOci-H.js";import{t}from"./Lobby-BLpQMsou.js";import{t as n}from"./index-B8zNAnNF.js";var r=e();function i(){let{code:e}=n.useParams();return(0,r.jsx)(t,{code:e})}export{i as component};
