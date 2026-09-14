@@ -1,4 +1,4 @@
-import { BUILDING_SPRITE, CELL, TEAM_COLORS, UNIT_SPRITE } from "./config";
+import { BUILDING_SPRITE, CELL, TEAM_COLORS, UNIT_SPRITE, assetUrl } from "./config";
 import type { World } from "./sim";
 import { TILE_GROUND, TILE_HIGH, TILE_RAMP, TILE_SPAWN, TILE_VOID } from "./types";
 import type { BuildingType, UnitType } from "./types";
@@ -18,15 +18,15 @@ let ready = false;
 export function loadArt(): Promise<void> {
   if (ready) return Promise.resolve();
   const urls = [
-    "/game/tiles/ground.jpg",
-    "/game/tiles/high.jpg",
-    "/game/tiles/rift.jpg",
+    assetUrl("game/tiles/ground.jpg"),
+    assetUrl("game/tiles/high.jpg"),
+    assetUrl("game/tiles/rift.jpg"),
     ...Object.values(UNIT_SPRITE),
     ...Object.values(BUILDING_SPRITE),
-    "/game/sprites/ore.png",
-    "/game/sprites/ore2.png",
-    "/game/sprites/flux.png",
-    "/game/sprites/flux2.png",
+    assetUrl("game/sprites/ore.png"),
+    assetUrl("game/sprites/ore2.png"),
+    assetUrl("game/sprites/flux.png"),
+    assetUrl("game/sprites/flux2.png"),
   ];
   return Promise.all(
     urls.map(
@@ -83,9 +83,9 @@ export function drawWorld(
 ) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, vw, vh);
-  if (!groundPat) groundPat = pattern(ctx, "/game/tiles/ground.jpg", 0.18);
-  if (!highPat) highPat = pattern(ctx, "/game/tiles/high.jpg", 0.18);
-  if (!riftPat) riftPat = pattern(ctx, "/game/tiles/rift.jpg", 0.22);
+  if (!groundPat) groundPat = pattern(ctx, assetUrl("game/tiles/ground.jpg"), 0.18);
+  if (!highPat) highPat = pattern(ctx, assetUrl("game/tiles/high.jpg"), 0.18);
+  if (!riftPat) riftPat = pattern(ctx, assetUrl("game/tiles/rift.jpg"), 0.22);
 
   ctx.fillStyle = "#07080b";
   ctx.fillRect(0, 0, vw, vh);
@@ -150,11 +150,11 @@ export function drawWorld(
     const src =
       n.kind === 1
         ? n.id % 2 === 0
-          ? "/game/sprites/ore.png"
-          : "/game/sprites/ore2.png"
+          ? assetUrl("game/sprites/ore.png")
+          : assetUrl("game/sprites/ore2.png")
         : n.id % 2 === 0
-          ? "/game/sprites/flux.png"
-          : "/game/sprites/flux2.png";
+          ? assetUrl("game/sprites/flux.png")
+          : assetUrl("game/sprites/flux2.png");
     const im = img(src);
     const s = n.kind === 1 ? 42 : 40;
     if (im) ctx.drawImage(im, n.x - s / 2, n.y - s / 2, s, s);

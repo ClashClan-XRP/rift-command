@@ -2,9 +2,15 @@
 
 Browser RTS for iPhone, iPad, and desktop. Three similar factions, unlimited resources, maps with gated spawn holds, and rooms for up to six players (humans or computer, with difficulty).
 
-**Public source:** [github.com/ClashClan-XRP/rift-command](https://github.com/ClashClan-XRP/rift-command)
+## Play now
 
-Play in the browser. Create a room and share the room code so friends can join. The room host sets the map and game type.
+**Playable in the browser:** [clashclan-xrp.github.io/rift-command](https://clashclan-xrp.github.io/rift-command/)
+
+Add that link to your Home Screen (Safari → Share → Add to Home Screen) for fullscreen play on iPhone and iPad.
+
+**Source:** [github.com/ClashClan-XRP/rift-command](https://github.com/ClashClan-XRP/rift-command)
+
+Skirmish vs computer is fully playable on that GitHub Pages link. Friend rooms that join across two phones need the published Grok app (a tiny handshake server GitHub Pages cannot run). You can still fill seats with computer opponents on Pages.
 
 ## Play
 
@@ -16,13 +22,9 @@ Spawn shields last 75 seconds. Enemy units cannot enter a hold until the gates o
 
 ## Add to Home Screen
 
-This game is a web app. After it is published to a public `*.grok.me` address:
-
-1. Open that link in **Safari** (iPhone / iPad) or **Chrome** (Android)
+1. Open [clashclan-xrp.github.io/rift-command](https://clashclan-xrp.github.io/rift-command/) in **Safari** (iPhone / iPad) or **Chrome** (Android)
 2. Share → **Add to Home Screen** (iOS) or menu → **Install app** (Android)
 3. Open the icon — it launches fullscreen, no browser chrome
-
-On iPhone you can also open `https://YOUR-APP.grok.me/?install=1&platform=ios` for the install walkthrough.
 
 ## Controls
 
@@ -49,12 +51,3 @@ Aegis, Striker, and Foundry share the same roster. Aegis is tougher and slower, 
 - Hex Gate — 6 seats
 
 Each spawn sits in a stone alcove behind a choke.
-
-## Run locally
-
-```bash
-npm install
-npm run dev
-```
-
-Then open the printed local URL. `npm run build` produces the production bundle.

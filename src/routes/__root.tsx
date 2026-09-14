@@ -4,6 +4,8 @@ import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
 const APP_NAME = "Rift Command";
+const base = import.meta.env.BASE_URL || "/";
+const asset = (path: string) => `${base}${path.replace(/^\//, "")}`;
 
 export const Route = createRootRoute({
   head: () => ({
@@ -25,10 +27,10 @@ export const Route = createRootRoute({
       { name: "mobile-web-app-capable", content: "yes" },
     ],
     links: [
-      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+      { rel: "icon", type: "image/svg+xml", href: asset("favicon.svg") },
       { rel: "stylesheet", href: appCss },
-      { rel: "manifest", href: "/__grok/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
+      { rel: "manifest", href: asset("__grok/manifest.webmanifest") },
+      { rel: "apple-touch-icon", href: asset("__grok/icon-180.png") },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {

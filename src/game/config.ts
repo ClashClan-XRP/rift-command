@@ -13,6 +13,12 @@ export const TICK = 1 / 20;
 export const SHIELD_SECONDS = 75;
 export const START_ORE = 400;
 export const START_FLUX = 0;
+
+/** Prefix public assets so GitHub Pages (`/rift-command/`) and the live app (`/`) both resolve. */
+export function assetUrl(path: string) {
+  const base = import.meta.env.BASE_URL || "/";
+  return `${base}${path.replace(/^\//, "")}`;
+}
 export const START_WORKERS = 6;
 export const START_SUPPLY = 0;
 export const CORE_SUPPLY = 8;
@@ -265,21 +271,21 @@ export const DIFFICULTY: Record<
 export const TEAM_COLORS = ["#6db3d4", "#d46d6d", "#7dba7a", "#c4a06a", "#8f9ad4", "#d4895a"];
 
 export const UNIT_SPRITE: Record<UnitType, string> = {
-  worker: "/game/sprites/worker.png",
-  infantry: "/game/sprites/infantry.png",
-  ranger: "/game/sprites/ranger.png",
-  armor: "/game/sprites/armor.png",
-  siege: "/game/sprites/siege.png",
-  fighter: "/game/sprites/fighter.png",
+  worker: assetUrl("game/sprites/worker.png"),
+  infantry: assetUrl("game/sprites/infantry.png"),
+  ranger: assetUrl("game/sprites/ranger.png"),
+  armor: assetUrl("game/sprites/armor.png"),
+  siege: assetUrl("game/sprites/siege.png"),
+  fighter: assetUrl("game/sprites/fighter.png"),
 };
 
 export const BUILDING_SPRITE: Record<BuildingType, string> = {
-  core: "/game/sprites/core.png",
-  barracks: "/game/sprites/barracks.png",
-  workshop: "/game/sprites/workshop.png",
-  spire: "/game/sprites/spire.png",
-  depot: "/game/sprites/depot.png",
-  turret: "/game/sprites/turret.png",
+  core: assetUrl("game/sprites/core.png"),
+  barracks: assetUrl("game/sprites/barracks.png"),
+  workshop: assetUrl("game/sprites/workshop.png"),
+  spire: assetUrl("game/sprites/spire.png"),
+  depot: assetUrl("game/sprites/depot.png"),
+  turret: assetUrl("game/sprites/turret.png"),
 };
 
 export function raceOf(id: RaceId): RaceDef {

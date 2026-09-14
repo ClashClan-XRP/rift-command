@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { MAP_META } from "@/game/maps";
-import { RACES } from "@/game/config";
+import { RACES, assetUrl } from "@/game/config";
 import type { Difficulty, GameType, MapId, RaceId, SlotConfig, SlotKind } from "@/game/types";
 import { MatchView } from "@/components/game/MatchView";
 import type { MatchSetup } from "@/game/types";
@@ -63,7 +63,7 @@ export function HomeMenu() {
   return (
     <div className="relative min-h-dvh bg-bg text-fg">
       <img
-        src="/game/maps/menu-bg.jpg"
+        src={assetUrl("game/maps/menu-bg.jpg")}
         alt=""
         className="absolute inset-0 h-full w-full object-cover opacity-40"
       />

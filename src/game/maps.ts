@@ -1,4 +1,4 @@
-import { CELL } from "./config";
+import { CELL, assetUrl } from "./config";
 import type { GameMap, MapId, ResourceNode, SpawnZone } from "./types";
 import { TILE_GROUND, TILE_HIGH, TILE_RAMP, TILE_SPAWN, TILE_VOID } from "./types";
 
@@ -16,7 +16,7 @@ export const MAP_META: {
     blurb: "Two alcoves, one long valley. Each spawn sits behind a stone choke.",
     maxPlayers: 2,
     size: 68,
-    thumb: "/game/maps/bastion.jpg",
+    thumb: assetUrl("game/maps/bastion.jpg"),
   },
   {
     id: "crucible",
@@ -24,7 +24,7 @@ export const MAP_META: {
     blurb: "Four corner holds around a raised plate. No instant cross-map hit.",
     maxPlayers: 4,
     size: 84,
-    thumb: "/game/maps/crucible.jpg",
+    thumb: assetUrl("game/maps/crucible.jpg"),
   },
   {
     id: "hexgate",
@@ -32,7 +32,7 @@ export const MAP_META: {
     blurb: "Six gated holds around a hexagonal basin. Built for a full room.",
     maxPlayers: 6,
     size: 96,
-    thumb: "/game/maps/hexgate.jpg",
+    thumb: assetUrl("game/maps/hexgate.jpg"),
   },
 ];
 
