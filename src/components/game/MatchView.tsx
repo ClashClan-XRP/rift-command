@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Check,
   Crosshair,
   Home,
   Maximize2,
@@ -7,6 +8,7 @@ import {
   Square,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BUILDINGS, BUILDING_SPRITE, UNITS, UNIT_SPRITE } from "@/game/config";
@@ -204,7 +206,6 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
       }
     }
     if (e.type === "pointermove") {
-      s.updateGhost(wpt.x, wpt.y);
       const prev = s.pointers.get(e.pointerId);
       s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       dragRef.current.dist = Math.max(
@@ -219,13 +220,18 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
         s.box = null;
         return;
       }
+      if (s.mode === "build" && s.ghost?.held) {
+        s.updateGhost(wpt.x, wpt.y, false);
+        setHud((n) => n + 1);
+        return;
+      }
       if (s.box && !touch) {
         s.box.x1 = wpt.x;
         s.box.y1 = wpt.y;
       } else if (
         prev &&
         dragRef.current.dist > (touch ? 48 : 14) &&
-        (touch || e.buttons === 2 || e.buttons === 4 || s.mode === "pan")
+        (touch || e.buttons === 2 || e.buttons === 4 || s.mode === "pan" || s.mode === "build")
       ) {
         s.cam.x -= (e.clientX - prev.x) / s.cam.z;
         s.cam.y -= (e.clientY - prev.y) / s.cam.z;
@@ -236,12 +242,20 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
       if (s.pointers.size < 2) s.lastPinch = 0;
       const slop = touch ? 48 : 14;
       const dragged = dragRef.current.dist > slop;
+      if (s.mode === "build") {
+        if (!dragged && s.hitGhost(dragRef.current.wx, dragRef.current.wy)) {
+          if (s.ghost?.held) s.ghost.held = false;
+          else s.grabGhost();
+        }
+        setHud((n) => n + 1);
+        return;
+      }
       if (s.box) {
         s.boxSelect(s.box.x0, s.box.y0, s.box.x1, s.box.y1, e.shiftKey);
         const tiny = Math.hypot(s.box.x1 - s.box.x0, s.box.y1 - s.box.y0) < 12;
         if (tiny) s.tapWorld(s.box.x0, s.box.y0, e.shiftKey);
         s.box = null;
-      } else if (!dragged || s.mode === "build" || s.mode === "attack") {
+      } else if (!dragged || s.mode === "attack") {
         const tx = dragRef.current.wx;
         const ty = dragRef.current.wy;
         if (!touch && e.button === 2) s.tapWorld(tx, ty, false);
@@ -339,7 +353,9 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
         {s?.mode === "build" && s.buildType && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
             <p className="rounded-full bg-ok/25 px-3 py-1.5 text-center text-[12px] text-fg shadow">
-              Tap the map to place {BUILDINGS[s.buildType].name} · green footprint = valid
+              {s.ghost?.held
+                ? `Drag the green square · then tap Place ${BUILDINGS[s.buildType].name}`
+                : `Pan/pinch to look · tap the green ${BUILDINGS[s.buildType].name} square to pick it up`}
             </p>
           </div>
         )}
@@ -403,11 +419,15 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="truncate text-xs text-muted">
               {s?.mode === "build" && s.buildType
-                ? `Tap the map to place ${BUILDINGS[s.buildType].name} (green = ok)`
+                ? s.ghost?.held
+                  ? "Dragging footprint — camera locked"
+                  : "Pan the map, then tap the green square"
                 : selU.length
                   ? `${selU.length} selected — tap the map to order`
                   : selB[0]
-                    ? `${BUILDINGS[selB[0].type].name} — tap a card to train`
+                    ? selB[0].progress < 1
+                      ? `${BUILDINGS[selB[0].type].name} ${((selB[0].progress * 100) | 0)}% — cancel below`
+                      : `${BUILDINGS[selB[0].type].name} — tap a card to train`
                     : "Tap a unit · drag to pan · pinch to zoom"}
             </p>
             <div className="flex gap-1">
@@ -437,22 +457,64 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
           </div>
 
           <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+            {s?.mode === "build" && s.buildType && (
+              <>
+                <button
+                  type="button"
+                  className="col-span-2 flex h-14 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-border bg-elevated text-sm font-medium"
+                  onClick={() => {
+                    sessRef.current?.cancelPlacement();
+                    setHud((n) => n + 1);
+                  }}
+                >
+                  <X className="size-4" />
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!s.ghost?.ok}
+                  className="col-span-2 flex h-14 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-ok bg-ok/25 text-sm font-medium disabled:opacity-40"
+                  onClick={() => {
+                    sessRef.current?.confirmPlacement();
+                    setHud((n) => n + 1);
+                  }}
+                >
+                  <Check className="size-4" />
+                  Place {BUILDINGS[s.buildType].name}
+                </button>
+              </>
+            )}
             {workerOn &&
+              s?.mode !== "build" &&
               (Object.keys(BUILDINGS) as BuildingType[])
                 .filter((t) => t !== "core")
                 .map((t) => (
-                <Cmd
-                  key={t}
-                  src={BUILDING_SPRITE[t]}
-                  label={BUILDINGS[t].name}
-                  sub={`${BUILDINGS[t].ore}${BUILDINGS[t].flux ? `/${BUILDINGS[t].flux}` : ""}`}
-                  onClick={() => {
-                    sessRef.current?.beginBuild(t);
-                    setHud((n) => n + 1);
-                  }}
-                />
-              ))}
+                  <Cmd
+                    key={t}
+                    src={BUILDING_SPRITE[t]}
+                    label={BUILDINGS[t].name}
+                    sub={`${BUILDINGS[t].ore}${BUILDINGS[t].flux ? `/${BUILDINGS[t].flux}` : ""}`}
+                    onClick={() => {
+                      sessRef.current?.beginBuild(t);
+                      setHud((n) => n + 1);
+                    }}
+                  />
+                ))}
+            {selB[0] && selB[0].progress < 1 && s?.mode !== "build" && (
+              <button
+                type="button"
+                className="col-span-2 flex h-14 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-danger bg-danger/15 text-sm font-medium"
+                onClick={() => {
+                  sessRef.current?.cancelConstruction();
+                  setHud((n) => n + 1);
+                }}
+              >
+                <X className="size-4" />
+                Cancel build
+              </button>
+            )}
             {selB[0] &&
+              selB[0].progress >= 1 &&
               BUILDINGS[selB[0].type].produces.map((t) => (
                 <Cmd
                   key={t}
@@ -462,7 +524,7 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
                   onClick={() => sessRef.current?.train(t as UnitType)}
                 />
               ))}
-            {!workerOn && !selB[0] && (
+            {!workerOn && !selB[0] && s?.mode !== "build" && (
               <p className="col-span-4 px-1 py-3 text-xs text-muted sm:col-span-6">
                 Tap a rigger (the six workers by your nexus). Then this grid becomes buildings.
               </p>
@@ -487,7 +549,9 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
                 You can also tap the crystal first — nearby riggers will go.
               </li>
               <li>
-                Tap your <b>nexus</b> (the big core), then tap a card at the bottom to train.
+                To build: tap a building card. <b>Pan/pinch</b> to look around, <b>tap the green
+                square</b> to pick it up, drag it, then tap <b>Place</b>. Cancel backs out.
+                Tap an unfinished building and <b>Cancel build</b> to refund.
               </li>
               <li>Use the square map to jump the camera. The ? button reopens this.</li>
             </ol>

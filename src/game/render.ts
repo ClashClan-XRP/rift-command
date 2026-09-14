@@ -78,7 +78,7 @@ export function drawWorld(
   alpha: number,
   selUnits: Set<number>,
   selBuildings: Set<number>,
-  ghost: { gx: number; gy: number; w: number; h: number; ok: boolean } | null,
+  ghost: { gx: number; gy: number; w: number; h: number; ok: boolean; held?: boolean } | null,
   localOwner: number,
 ) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -214,18 +214,19 @@ export function drawWorld(
 
   if (ghost) {
     ctx.save();
-    ctx.globalAlpha = 0.5;
-    ctx.fillStyle = ghost.ok ? "rgba(110,163,122,0.85)" : "rgba(196,92,74,0.85)";
+    ctx.globalAlpha = ghost.held ? 0.62 : 0.48;
+    ctx.fillStyle = ghost.ok ? "rgba(110,163,122,0.9)" : "rgba(196,92,74,0.9)";
     ctx.fillRect(ghost.gx * CELL, ghost.gy * CELL, ghost.w * CELL, ghost.h * CELL);
     ctx.globalAlpha = 1;
     ctx.strokeStyle = ghost.ok ? "#8fca98" : "#d07a6c";
-    ctx.lineWidth = 3;
+    ctx.lineWidth = ghost.held ? 4.5 : 3;
     ctx.strokeRect(ghost.gx * CELL + 1, ghost.gy * CELL + 1, ghost.w * CELL - 2, ghost.h * CELL - 2);
     ctx.font = "700 12px sans-serif";
     ctx.textAlign = "center";
     ctx.fillStyle = "#f4f4f5";
+    const label = ghost.held ? (ghost.ok ? "DRAG" : "BLOCKED") : ghost.ok ? "TAP" : "BLOCKED";
     ctx.fillText(
-      ghost.ok ? "PLACE" : "BLOCKED",
+      label,
       ghost.gx * CELL + (ghost.w * CELL) / 2,
       ghost.gy * CELL + (ghost.h * CELL) / 2 + 4,
     );

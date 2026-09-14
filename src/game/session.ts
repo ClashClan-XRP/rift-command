@@ -3,7 +3,7 @@ import { sfxBoom, sfxMove, sfxSelect, sfxShot, sfxTrain, unlockAudio } from "./a
 import { BUILDINGS, CELL, TICK } from "./config";
 import { loadArt, type Cam } from "./render";
 import { World } from "./sim";
-import type { BuildingType, Command, MatchSetup, UnitType } from "./types";
+import type { BuildingType, Command, MatchSetup, Unit, UnitType } from "./types";
 
 export type PointerMode = "pan" | "select" | "attack" | "build";
 
@@ -15,7 +15,7 @@ export class Session {
   selBuildings = new Set<number>();
   mode: PointerMode = "pan";
   buildType: BuildingType | null = null;
-  ghost: { gx: number; gy: number; w: number; h: number; ok: boolean } | null = null;
+  ghost: { gx: number; gy: number; w: number; h: number; ok: boolean; held: boolean } | null = null;
   localOwner: number;
   isHost: boolean;
   paused = false;
@@ -96,20 +96,7 @@ export class Session {
 
   tapWorld(x: number, y: number, additive: boolean) {
     unlockAudio();
-    if (this.mode === "build" && this.buildType) {
-      const def = BUILDINGS[this.buildType];
-      const gx = Math.round(x / CELL - def.w / 2);
-      const gy = Math.round(y / CELL - def.h / 2);
-      const worker = this.selectedWorkers()[0];
-      if (!worker) return;
-      const spot = this.world.findPlace(gx, gy, def.w, def.h, this.localOwner, 6);
-      if (!spot) return;
-      this.issue({ k: "build", workerId: worker.id, btype: this.buildType, gx: spot.gx, gy: spot.gy });
-      this.mode = "pan";
-      this.buildType = null;
-      this.ghost = null;
-      return;
-    }
+    if (this.mode === "build" && this.buildType) return;
     if (this.mode === "attack") {
       const u = this.world.unitAt(x, y);
       const b = this.world.buildingAt(x, y);
@@ -209,10 +196,64 @@ export class Session {
   beginBuild(type: BuildingType) {
     this.mode = "build";
     this.buildType = type;
-    this.updateGhost(this.cam.x, this.cam.y);
+    this.updateGhost(this.cam.x, this.cam.y, true);
+    if (this.ghost) this.ghost.held = false;
+  }
+
+  hitGhost(x: number, y: number) {
+    const g = this.ghost;
+    if (!g) return false;
+    const pad = 22;
+    const x0 = g.gx * CELL - pad;
+    const y0 = g.gy * CELL - pad;
+    const x1 = (g.gx + g.w) * CELL + pad;
+    const y1 = (g.gy + g.h) * CELL + pad;
+    return x >= x0 && y >= y0 && x <= x1 && y <= y1;
+  }
+
+  grabGhost() {
+    if (this.ghost) this.ghost.held = true;
+  }
+
+  cancelPlacement() {
+    this.mode = "pan";
+    this.buildType = null;
+    this.ghost = null;
+  }
+
+  confirmPlacement() {
+    if (this.mode !== "build" || !this.buildType || !this.ghost) return false;
+    const def = BUILDINGS[this.buildType];
+    const spot = this.ghost.ok
+      ? { gx: this.ghost.gx, gy: this.ghost.gy }
+      : this.world.findPlace(this.ghost.gx, this.ghost.gy, def.w, def.h, this.localOwner, 4);
+    if (!spot) return false;
+    let worker: Unit | undefined = this.selectedWorkers()[0];
+    if (!worker) {
+      worker = this.world.units.find(
+        (u) =>
+          u.owner === this.localOwner &&
+          u.type === "worker" &&
+          (u.order === "idle" || u.order === "gather") &&
+          !u.cargo,
+      );
+    }
+    if (!worker) return false;
+    this.issue({ k: "build", workerId: worker.id, btype: this.buildType, gx: spot.gx, gy: spot.gy });
+    this.cancelPlacement();
+    return true;
+  }
+
+  cancelConstruction() {
+    const b = this.world.buildings.find((x) => this.selBuildings.has(x.id) && x.progress < 1);
+    if (b) this.issue({ k: "cancel", bid: b.id });
   }
 
   stop() {
+    if (this.mode === "build") {
+      this.cancelPlacement();
+      return;
+    }
     if (this.selUnits.size) this.issue({ k: "stop", ids: [...this.selUnits] });
   }
 
@@ -220,7 +261,7 @@ export class Session {
     this.mode = "attack";
   }
 
-  updateGhost(x: number, y: number) {
+  updateGhost(x: number, y: number, snap = false) {
     if (this.mode !== "build" || !this.buildType) {
       this.ghost = null;
       return;
@@ -228,11 +269,21 @@ export class Session {
     const def = BUILDINGS[this.buildType];
     const gx = Math.round(x / CELL - def.w / 2);
     const gy = Math.round(y / CELL - def.h / 2);
-    const spot = this.world.findPlace(gx, gy, def.w, def.h, this.localOwner, 3);
-    if (spot) {
-      this.ghost = { gx: spot.gx, gy: spot.gy, w: def.w, h: def.h, ok: true };
-    } else {
-      this.ghost = { gx, gy, w: def.w, h: def.h, ok: false };
+    const held = this.ghost?.held ?? false;
+    if (snap) {
+      const spot = this.world.findPlace(gx, gy, def.w, def.h, this.localOwner, 4);
+      if (spot) {
+        this.ghost = { gx: spot.gx, gy: spot.gy, w: def.w, h: def.h, ok: true, held };
+        return;
+      }
     }
+    this.ghost = {
+      gx,
+      gy,
+      w: def.w,
+      h: def.h,
+      ok: this.world.canPlace(gx, gy, def.w, def.h, this.localOwner),
+      held,
+    };
   }
 }

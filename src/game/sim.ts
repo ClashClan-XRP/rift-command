@@ -297,7 +297,21 @@ export class World {
       }
       case "cancel": {
         const b = this.buildings.find((x) => x.id === cmd.bid && x.owner === owner);
-        if (b && b.queue.length) {
+        if (!b) break;
+        if (b.progress < 1) {
+          const def = BUILDINGS[b.type];
+          this.players[owner].ore += def.ore;
+          this.players[owner].flux += def.flux;
+          this.markOcc(b, false);
+          this.buildings = this.buildings.filter((x) => x.id !== b.id);
+          const builder = this.units.find((u) => u.id === b.builderId);
+          if (builder && builder.order === "build") {
+            builder.order = "idle";
+            builder.targetId = -1;
+          }
+          break;
+        }
+        if (b.queue.length) {
           const t = b.queue.pop()!;
           const def = UNITS[t];
           this.players[owner].ore += def.ore;
