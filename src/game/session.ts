@@ -32,7 +32,8 @@ export class Session {
     this.localOwner = setup.localOwner;
     this.isHost = isHost;
     const spawn = this.world.map.spawns[this.localOwner] ?? this.world.map.spawns[0];
-    this.cam = { x: spawn.cx, y: spawn.cy, z: 0.9 };
+    const phone = typeof window !== "undefined" && window.innerWidth < 800;
+    this.cam = { x: spawn.cx, y: spawn.cy, z: phone ? 0.7 : 0.9 };
   }
 
   async ready() {
@@ -117,8 +118,9 @@ export class Session {
       this.mode = "pan";
       return;
     }
-    const mine = this.world.unitAt(x, y, this.localOwner);
-    const anyU = this.world.unitAt(x, y);
+    const slop = 36;
+    const mine = this.world.unitAt(x, y, this.localOwner, slop);
+    const anyU = this.world.unitAt(x, y, undefined, slop);
     const b = this.world.buildingAt(x, y);
     const node = this.world.nodeAt(x, y);
     if (mine) {

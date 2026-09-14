@@ -865,12 +865,12 @@ export class World {
     return best;
   }
 
-  unitAt(x: number, y: number, owner?: number): Unit | null {
+  unitAt(x: number, y: number, owner?: number, slop = 8): Unit | null {
     let best: Unit | null = null;
-    let bd = 18 * 18;
+    let bd = (28 + slop) * (28 + slop);
     for (const u of this.units) {
       if (owner !== undefined && u.owner !== owner) continue;
-      const r = u.radius + 8;
+      const r = u.radius + slop;
       const d = dist2(u.x, u.y, x, y);
       if (d < r * r && d < bd) {
         bd = d;
@@ -891,7 +891,7 @@ export class World {
 
   nodeAt(x: number, y: number): ResourceNode | null {
     let best: ResourceNode | null = null;
-    let bd = 22 * 22;
+    let bd = 40 * 40;
     for (const n of this.nodes) {
       const d = dist2(n.x, n.y, x, y);
       if (d < bd) {

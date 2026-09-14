@@ -34,6 +34,10 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
   const [menu, setMenu] = useState(false);
   const [muted, setMutedState] = useState(false);
   const [ready, setReady] = useState(false);
+  const [help, setHelp] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("rift-touch-help") !== "1";
+  });
   const [landscape, setLandscape] = useState(false);
 
   useEffect(() => {
@@ -178,18 +182,24 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
     const s = sessRef.current;
     const canvas = canvasRef.current;
     if (!s || !canvas) return;
+    e.preventDefault();
     unlockAudio();
     const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const wpt = screenToWorld(s.cam, sx, sy, rect.width, rect.height);
     s.hover = wpt;
+    const touch = e.pointerType !== "mouse";
 
     if (e.type === "pointerdown") {
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      try {
+        (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      } catch {
+        /* iOS Safari can reject capture */
+      }
       s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       dragRef.current = { x: e.clientX, y: e.clientY, dist: 0 };
-      if (e.pointerType === "mouse" && e.button === 0 && s.mode !== "build" && s.mode !== "attack") {
+      if (!touch && e.button === 0 && s.mode !== "build" && s.mode !== "attack") {
         s.box = { x0: wpt.x, y0: wpt.y, x1: wpt.x, y1: wpt.y };
       }
     }
@@ -209,10 +219,10 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
         s.box = null;
         return;
       }
-      if (s.box && e.pointerType === "mouse") {
+      if (s.box && !touch) {
         s.box.x1 = wpt.x;
         s.box.y1 = wpt.y;
-      } else if (prev && (e.pointerType === "touch" || e.buttons === 2 || e.buttons === 4)) {
+      } else if (prev && (touch || e.buttons === 2 || e.buttons === 4 || s.mode === "pan")) {
         s.cam.x -= (e.clientX - prev.x) / s.cam.z;
         s.cam.y -= (e.clientY - prev.y) / s.cam.z;
       }
@@ -220,16 +230,18 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
     if (e.type === "pointerup" || e.type === "pointercancel") {
       s.pointers.delete(e.pointerId);
       if (s.pointers.size < 2) s.lastPinch = 0;
-      const dragged = dragRef.current.dist > 14;
+      const slop = touch ? 36 : 14;
+      const dragged = dragRef.current.dist > slop;
       if (s.box) {
         s.boxSelect(s.box.x0, s.box.y0, s.box.x1, s.box.y1, e.shiftKey);
         const tiny = Math.hypot(s.box.x1 - s.box.x0, s.box.y1 - s.box.y0) < 12;
         if (tiny) s.tapWorld(wpt.x, wpt.y, e.shiftKey);
         s.box = null;
       } else if (!dragged || s.mode === "build" || s.mode === "attack") {
-        if (e.pointerType === "mouse" && e.button === 2) s.tapWorld(wpt.x, wpt.y, false);
-        else if (e.pointerType !== "mouse" || e.button === 0) s.tapWorld(wpt.x, wpt.y, e.shiftKey);
+        if (!touch && e.button === 2) s.tapWorld(wpt.x, wpt.y, false);
+        else if (touch || e.button === 0) s.tapWorld(wpt.x, wpt.y, e.shiftKey);
       }
+      setHud((n) => n + 1);
     }
   };
 
@@ -281,6 +293,14 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
           <Button
             size="icon"
             variant="ghost"
+            aria-label="Touch help"
+            onClick={() => setHelp(true)}
+          >
+            <span className="text-base font-semibold">?</span>
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
             aria-label={muted ? "Unmute" : "Mute"}
             onClick={() => {
               setMuted(!muted);
@@ -310,6 +330,29 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
           onWheel={onWheel}
           onContextMenu={(e) => e.preventDefault()}
         />
+        {!selU.length && !selB[0] && !help && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
+            <p className="rounded-full bg-surface/90 px-3 py-1.5 text-center text-[12px] text-fg shadow">
+              TAP a glowing rigger · DRAG to pan · PINCH to zoom
+            </p>
+          </div>
+        )}
+        {!!selU.length && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
+            <p className="rounded-full bg-ok/20 px-3 py-1.5 text-center text-[12px] text-fg shadow">
+              {workerOn
+                ? "Tap crystals to mine · tap ground to move · pick a building below"
+                : "Tap ground to move · crosshair then tap to attack"}
+            </p>
+          </div>
+        )}
+        {!!selB[0] && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
+            <p className="rounded-full bg-ok/20 px-3 py-1.5 text-center text-[12px] text-fg shadow">
+              Tap a unit card below to train
+            </p>
+          </div>
+        )}
         {!ready && (
           <div className="absolute inset-0 grid place-items-center bg-bg/80 text-sm text-muted">
             Loading battlefield…
@@ -347,10 +390,10 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="truncate text-xs text-muted">
               {selU.length
-                ? `${selU.length} selected`
+                ? `${selU.length} selected — tap the map to order`
                 : selB[0]
-                  ? BUILDINGS[selB[0].type].name
-                  : "Tap a unit · drag to pan"}
+                  ? `${BUILDINGS[selB[0].type].name} — tap a card to train`
+                  : "Tap a unit · drag to pan · pinch to zoom"}
             </p>
             <div className="flex gap-1">
               <IconBtn
@@ -403,13 +446,46 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
                 />
               ))}
             {!workerOn && !selB[0] && (
-              <p className="col-span-4 px-1 py-3 text-xs text-subtle sm:col-span-6">
-                Select riggers to build. Select a structure to train.
+              <p className="col-span-4 px-1 py-3 text-xs text-muted sm:col-span-6">
+                Tap a rigger (the six workers by your nexus). Then this grid becomes buildings.
               </p>
             )}
           </div>
         </div>
       </div>
+
+      {help && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-bg/80 px-4">
+          <div className="w-full max-w-sm rounded-[var(--radius-xl)] border border-border bg-surface p-5">
+            <h2 className="font-display text-2xl font-semibold">Phone controls</h2>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-fg">
+              <li>
+                <b>Tap</b> a rigger (small worker). A ring appears when it is selected.
+              </li>
+              <li>
+                <b>Drag</b> one finger to pan the map. <b>Pinch</b> to zoom.
+              </li>
+              <li>
+                With units selected, <b>tap ground</b> to move or <b>tap crystals</b> to mine.
+              </li>
+              <li>
+                Tap your <b>nexus</b> (the big core), then tap a card at the bottom to train.
+              </li>
+              <li>Use the square map to jump the camera. The ? button reopens this.</li>
+            </ol>
+            <Button
+              className="mt-5 w-full"
+              size="lg"
+              onClick={() => {
+                localStorage.setItem("rift-touch-help", "1");
+                setHelp(false);
+              }}
+            >
+              Got it — play
+            </Button>
+          </div>
+        </div>
+      )}
 
       {(menu || winner !== null) && (
         <div className="absolute inset-0 z-20 grid place-items-center bg-bg/70 px-4">
@@ -422,7 +498,7 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
                 ? winner === meTeam
                   ? "The last nexus standing is yours."
                   : "Your nexus line has fallen."
-                : "Camera WASD · tap to order · pinch to zoom."}
+                : "Tap a rigger · drag to pan · pinch to zoom. Open ? for the full guide."}
             </p>
             <div className="mt-5 flex flex-col gap-2">
               {winner === null && <Button onClick={() => setMenu(false)}>Resume</Button>}

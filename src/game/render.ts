@@ -82,7 +82,9 @@ export function drawWorld(
   localOwner: number,
 ) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, vw, vh);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const dpr = ctx.canvas.width / Math.max(1, vw);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (!groundPat) groundPat = pattern(ctx, assetUrl("game/tiles/ground.jpg"), 0.18);
   if (!highPat) highPat = pattern(ctx, assetUrl("game/tiles/high.jpg"), 0.18);
   if (!riftPat) riftPat = pattern(ctx, assetUrl("game/tiles/rift.jpg"), 0.22);
@@ -201,6 +203,30 @@ export function drawWorld(
     ctx.fill();
   }
 
+  if (selUnits.size === 0 && selBuildings.size === 0 && world.time < 16) {
+    const pulse = 0.55 + 0.45 * Math.sin(world.time * 6);
+    ctx.font = "700 13px sans-serif";
+    ctx.textAlign = "center";
+    let tagged = 0;
+    for (const u of world.units) {
+      if (u.owner !== localOwner || u.type !== "worker") continue;
+      const x = u.px + (u.x - u.px) * alpha;
+      const y = u.py + (u.y - u.py) * alpha;
+      ctx.strokeStyle = `rgba(212,216,224,${0.35 + pulse * 0.55})`;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(x, y, 22 + pulse * 8, 0, Math.PI * 2);
+      ctx.stroke();
+      if (tagged < 2) {
+        ctx.fillStyle = "rgba(9,9,11,0.75)";
+        ctx.fillRect(x - 22, y - 42, 44, 16);
+        ctx.fillStyle = "#f4f4f5";
+        ctx.fillText("TAP", x, y - 30);
+        tagged += 1;
+      }
+    }
+  }
+
   ctx.restore();
 }
 
@@ -226,9 +252,9 @@ function drawUnit(
   ctx.globalAlpha = 1;
   if (sel) {
     ctx.strokeStyle = TEAM_COLORS[owner % TEAM_COLORS.length];
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = 2.8;
     ctx.beginPath();
-    ctx.ellipse(0, 8, size * 0.46, size * 0.24, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 8, size * 0.55, size * 0.3, 0, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.rotate(facing + Math.PI / 2);
@@ -287,6 +313,8 @@ export function drawMinimap(
   const map = world.map;
   const ww = map.w * CELL;
   const wh = map.h * CELL;
+  const dpr = ctx.canvas.width / Math.max(1, mw);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = "#0b0c10";
   ctx.fillRect(0, 0, mw, mh);
   const sx = mw / ww;
