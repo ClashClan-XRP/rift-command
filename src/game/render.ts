@@ -147,6 +147,15 @@ export function drawWorld(
     ctx.restore();
   }
 
+  const mining = new Set<number>();
+  for (const u of world.units) {
+    if (selUnits.has(u.id) && u.nodeId > 0) mining.add(u.nodeId);
+  }
+  const workersPicked = [...selUnits].some((id) => {
+    const u = world.units.find((x) => x.id === id);
+    return u?.type === "worker";
+  });
+
   for (const n of world.nodes) {
     if (n.x < viewL - 40 || n.y < viewT - 40 || n.x > viewR + 40 || n.y > viewB + 40) continue;
     const src =
@@ -159,12 +168,27 @@ export function drawWorld(
           : assetUrl("game/sprites/flux2.png");
     const im = img(src);
     const s = n.kind === 1 ? 42 : 40;
+    if (workersPicked || mining.has(n.id)) {
+      ctx.strokeStyle = mining.has(n.id) ? "rgba(110,196,188,0.95)" : "rgba(212,216,224,0.7)";
+      ctx.lineWidth = mining.has(n.id) ? 3 : 2;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, s * 0.62, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     if (im) ctx.drawImage(im, n.x - s / 2, n.y - s / 2, s, s);
     else {
       ctx.fillStyle = n.kind === 1 ? "#9bb4c8" : "#6ec4bc";
       ctx.beginPath();
       ctx.arc(n.x, n.y, 12, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (workersPicked && !mining.has(n.id) && world.time < 24) {
+      ctx.font = "700 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(9,9,11,0.75)";
+      ctx.fillRect(n.x - 22, n.y - 36, 44, 14);
+      ctx.fillStyle = "#f4f4f5";
+      ctx.fillText(n.kind === 1 ? "MINE" : "FLUX", n.x, n.y - 25);
     }
   }
 

@@ -539,48 +539,64 @@ export class World {
   }
 
   private stepGather(u: Unit) {
+    const race = raceOf(this.players[u.owner].race);
+    const speed = UNITS[u.type].speed * race.speed;
+    const steer = (tx: number, ty: number) => {
+      const dx = tx - u.x;
+      const dy = ty - u.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const step = speed * TICK;
+      if (d <= step + 2) {
+        u.x = tx;
+        u.y = ty;
+      } else {
+        u.x += (dx / d) * step;
+        u.y += (dy / d) * step;
+      }
+      u.facing = Math.atan2(dy, dx);
+      u.path = null;
+    };
+
     if (u.cargo) {
       const core = this.nearestCore(u.owner, u.x, u.y);
       if (!core) {
         u.order = "idle";
         return;
       }
-      if (dist2(u.x, u.y, core.x, core.y) < 48 * 48) {
+      if (dist2(u.x, u.y, core.x, core.y) < 80 * 80) {
         const p = this.players[u.owner];
         if (u.cargo === 1) p.ore += HARVEST_ORE;
         else p.flux += HARVEST_FLUX;
         u.cargo = 0;
         u.harvest = 0;
         this.events.push("harvest");
-        const node = this.nodes.find((n) => n.id === u.nodeId) ?? this.nearestNode(u.x, u.y, 1);
+        const node = this.nodes.find((n) => n.id === u.nodeId) ?? this.nearestNode(u.x, u.y);
         if (node) {
           u.nodeId = node.id;
-          this.pathUnit(u, node.x, node.y);
+          steer(node.x, node.y);
         }
         return;
       }
-      if (!u.path) this.pathUnit(u, core.x, core.y);
-      this.followPath(u);
+      steer(core.x, core.y);
       return;
     }
-    const node = this.nodes.find((n) => n.id === u.nodeId) ?? this.nearestNode(u.x, u.y, 1);
+    const node = this.nodes.find((n) => n.id === u.nodeId) ?? this.nearestNode(u.x, u.y);
     if (!node) {
       u.order = "idle";
       return;
     }
     u.nodeId = node.id;
-    if (dist2(u.x, u.y, node.x, node.y) < 28 * 28) {
+    if (dist2(u.x, u.y, node.x, node.y) < 72 * 72) {
       u.path = null;
       u.harvest += TICK;
       if (u.harvest >= HARVEST_TIME) {
         u.cargo = node.kind;
         u.harvest = 0;
         const core = this.nearestCore(u.owner, u.x, u.y);
-        if (core) this.pathUnit(u, core.x, core.y);
+        if (core) steer(core.x, core.y);
       }
     } else {
-      if (!u.path) this.pathUnit(u, node.x, node.y);
-      this.followPath(u);
+      steer(node.x, node.y);
     }
   }
 
@@ -889,9 +905,9 @@ export class World {
     return null;
   }
 
-  nodeAt(x: number, y: number): ResourceNode | null {
+  nodeAt(x: number, y: number, slop = 56): ResourceNode | null {
     let best: ResourceNode | null = null;
-    let bd = 40 * 40;
+    let bd = slop * slop;
     for (const n of this.nodes) {
       const d = dist2(n.x, n.y, x, y);
       if (d < bd) {

@@ -207,9 +207,9 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
       s.updateGhost(wpt.x, wpt.y);
       const prev = s.pointers.get(e.pointerId);
       s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      dragRef.current.dist += Math.hypot(
-        e.clientX - dragRef.current.x,
-        e.clientY - dragRef.current.y,
+      dragRef.current.dist = Math.max(
+        dragRef.current.dist,
+        Math.hypot(e.clientX - dragRef.current.x, e.clientY - dragRef.current.y),
       );
       if (s.pointers.size === 2) {
         const pts = [...s.pointers.values()];
@@ -222,7 +222,11 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
       if (s.box && !touch) {
         s.box.x1 = wpt.x;
         s.box.y1 = wpt.y;
-      } else if (prev && (touch || e.buttons === 2 || e.buttons === 4 || s.mode === "pan")) {
+      } else if (
+        prev &&
+        dragRef.current.dist > (touch ? 18 : 6) &&
+        (touch || e.buttons === 2 || e.buttons === 4 || s.mode === "pan")
+      ) {
         s.cam.x -= (e.clientX - prev.x) / s.cam.z;
         s.cam.y -= (e.clientY - prev.y) / s.cam.z;
       }
@@ -230,7 +234,7 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
     if (e.type === "pointerup" || e.type === "pointercancel") {
       s.pointers.delete(e.pointerId);
       if (s.pointers.size < 2) s.lastPinch = 0;
-      const slop = touch ? 36 : 14;
+      const slop = touch ? 48 : 14;
       const dragged = dragRef.current.dist > slop;
       if (s.box) {
         s.boxSelect(s.box.x0, s.box.y0, s.box.x1, s.box.y1, e.shiftKey);
@@ -341,7 +345,7 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
           <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
             <p className="rounded-full bg-ok/20 px-3 py-1.5 text-center text-[12px] text-fg shadow">
               {workerOn
-                ? "Tap crystals to mine · tap ground to move · pick a building below"
+                ? "Tap a crystal (the ice patches) — riggers will mine it"
                 : "Tap ground to move · crosshair then tap to attack"}
             </p>
           </div>
@@ -466,7 +470,8 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
                 <b>Drag</b> one finger to pan the map. <b>Pinch</b> to zoom.
               </li>
               <li>
-                With units selected, <b>tap ground</b> to move or <b>tap crystals</b> to mine.
+                With riggers selected, <b>tap a crystal</b> (the ice patches by your nexus) to mine.
+                You can also tap the crystal first — nearby riggers will go.
               </li>
               <li>
                 Tap your <b>nexus</b> (the big core), then tap a card at the bottom to train.

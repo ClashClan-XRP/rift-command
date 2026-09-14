@@ -119,10 +119,18 @@ export class Session {
       return;
     }
     const slop = 36;
+    const node = this.world.nodeAt(x, y, 52);
+    if (node) {
+      const nd = (x - node.x) ** 2 + (y - node.y) ** 2;
+      const onCrystal = nd <= 32 * 32;
+      const workersOn = this.selectedWorkers().length > 0;
+      if (onCrystal || workersOn) {
+        if (this.sendToNode(node)) return;
+      }
+    }
     const mine = this.world.unitAt(x, y, this.localOwner, slop);
     const anyU = this.world.unitAt(x, y, undefined, slop);
     const b = this.world.buildingAt(x, y);
-    const node = this.world.nodeAt(x, y);
     if (mine) {
       if (!additive) {
         this.selUnits.clear();
@@ -146,8 +154,6 @@ export class Session {
         this.issue({ k: "attack", ids: [...this.selUnits], tid: anyU.id });
       } else if (b && b.owner !== this.localOwner) {
         this.issue({ k: "attack", ids: [...this.selUnits], tid: b.id });
-      } else if (node && this.selectedWorkers().length) {
-        this.issue({ k: "gather", ids: this.selectedWorkers().map((u) => u.id), nid: node.id });
       } else {
         this.issue({ k: "move", ids: [...this.selUnits], x, y, am: false });
       }
@@ -157,6 +163,27 @@ export class Session {
       this.selUnits.clear();
       this.selBuildings.clear();
     }
+  }
+
+  sendToNode(node: { id: number; x: number; y: number }) {
+    let workers = this.selectedWorkers();
+    if (!workers.length) {
+      workers = this.world.units
+        .filter(
+          (u) =>
+            u.owner === this.localOwner &&
+            u.type === "worker" &&
+            (u.order === "idle" || u.order === "gather"),
+        )
+        .sort((a, b) => (a.x - node.x) ** 2 + (a.y - node.y) ** 2 - ((b.x - node.x) ** 2 + (b.y - node.y) ** 2))
+        .slice(0, 6);
+    }
+    if (!workers.length) return false;
+    this.selUnits.clear();
+    this.selBuildings.clear();
+    for (const w of workers) this.selUnits.add(w.id);
+    this.issue({ k: "gather", ids: workers.map((w) => w.id), nid: node.id });
+    return true;
   }
 
   boxSelect(x0: number, y0: number, x1: number, y1: number, additive: boolean) {
