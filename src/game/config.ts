@@ -82,7 +82,7 @@ export const UNITS: Record<UnitType, UnitDef> = {
     name: "Vanguard",
     hp: 70,
     speed: 82,
-    range: 22,
+    range: 36,
     dmg: 9,
     cooldown: 0.82,
     ore: 50,

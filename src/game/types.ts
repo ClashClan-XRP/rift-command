@@ -6,6 +6,8 @@ export type GameType = "ffa" | "teams";
 export type SlotKind = "open" | "human" | "cpu" | "closed";
 export type MapId = "bastion" | "crucible" | "hexgate";
 
+export type Stance = "attack" | "hold" | "rove";
+
 export type OrderKind =
   | "idle"
   | "move"
@@ -105,6 +107,11 @@ export interface Unit {
   cooldown: number;
   air: boolean;
   radius: number;
+  stance: Stance;
+  holdX: number;
+  holdY: number;
+  rove: Vec[];
+  roveI: number;
 }
 
 export interface Building {
@@ -199,7 +206,8 @@ export type Command =
   | { k: "build"; workerId: number; btype: BuildingType; gx: number; gy: number }
   | { k: "train"; bid: number; utype: UnitType }
   | { k: "rally"; bid: number; x: number; y: number }
-  | { k: "cancel"; bid: number };
+  | { k: "cancel"; bid: number }
+  | { k: "stance"; ids: number[]; stance: Stance; holdX?: number; holdY?: number; rove?: Vec[] };
 
 export interface LobbyState {
   hostId: string;

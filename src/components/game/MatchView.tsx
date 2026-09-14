@@ -5,7 +5,10 @@ import {
   Home,
   Maximize2,
   Pause,
+  Route,
+  Shield,
   Square,
+  Swords,
   Volume2,
   VolumeX,
   X,
@@ -133,6 +136,34 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
         );
         ctx.restore();
       }
+      if (s.mode === "rove" && s.roveDraft.length) {
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.strokeStyle = "rgba(143,202,152,0.9)";
+        ctx.fillStyle = "rgba(143,202,152,0.95)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        s.roveDraft.forEach((p, i) => {
+          const q = worldToScreenLocal(s.cam, p.x, p.y, r.width, r.height);
+          if (i === 0) ctx.moveTo(q.x, q.y);
+          else ctx.lineTo(q.x, q.y);
+        });
+        ctx.stroke();
+        s.roveDraft.forEach((p, i) => {
+          const q = worldToScreenLocal(s.cam, p.x, p.y, r.width, r.height);
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#0a0a0b";
+          ctx.font = "700 11px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(i + 1), q.x, q.y);
+          ctx.fillStyle = "rgba(143,202,152,0.95)";
+        });
+        ctx.restore();
+      }
       if (mctx && mini) {
         drawMinimap(mctx, s.world, s.cam, r.width, r.height, mini.clientWidth, mini.clientHeight);
       }
@@ -201,7 +232,7 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
       }
       s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       dragRef.current = { x: e.clientX, y: e.clientY, dist: 0, wx: wpt.x, wy: wpt.y };
-      if (!touch && e.button === 0 && s.mode !== "build" && s.mode !== "attack") {
+      if (s.mode === "select" || (!touch && e.button === 0 && s.mode !== "build" && s.mode !== "attack")) {
         s.box = { x0: wpt.x, y0: wpt.y, x1: wpt.x, y1: wpt.y };
       }
     }
@@ -225,13 +256,13 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
         setHud((n) => n + 1);
         return;
       }
-      if (s.box && !touch) {
+      if (s.box) {
         s.box.x1 = wpt.x;
         s.box.y1 = wpt.y;
       } else if (
         prev &&
         dragRef.current.dist > (touch ? 48 : 14) &&
-        (touch || e.buttons === 2 || e.buttons === 4 || s.mode === "pan" || s.mode === "build")
+        (touch || e.buttons === 2 || e.buttons === 4 || s.mode === "pan" || s.mode === "build" || s.mode === "rove")
       ) {
         s.cam.x -= (e.clientX - prev.x) / s.cam.z;
         s.cam.y -= (e.clientY - prev.y) / s.cam.z;
@@ -251,9 +282,9 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
         return;
       }
       if (s.box) {
-        s.boxSelect(s.box.x0, s.box.y0, s.box.x1, s.box.y1, e.shiftKey);
+        s.boxSelect(s.box.x0, s.box.y0, s.box.x1, s.box.y1, e.shiftKey || s.mode === "select");
         const tiny = Math.hypot(s.box.x1 - s.box.x0, s.box.y1 - s.box.y0) < 12;
-        if (tiny) s.tapWorld(s.box.x0, s.box.y0, e.shiftKey);
+        if (tiny) s.tapWorld(s.box.x0, s.box.y0, s.mode === "select" || e.shiftKey);
         s.box = null;
       } else if (!dragged || s.mode === "attack") {
         const tx = dragRef.current.wx;
@@ -287,6 +318,10 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
   const selU = s ? s.world.units.filter((u) => s.selUnits.has(u.id)) : [];
   const selB = s ? s.world.buildings.filter((b) => s.selBuildings.has(b.id)) : [];
   const workerOn = selU.some((u) => u.type === "worker");
+  const militaryOn = selU.some((u) => u.type !== "worker");
+  const stanceOn = militaryOn
+    ? selU.find((u) => u.type !== "worker")?.stance
+    : undefined;
   const winner = s?.world.winner ?? null;
   const meTeam = p?.team ?? 0;
   void hud;
@@ -359,19 +394,33 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
             </p>
           </div>
         )}
-        {!selU.length && !selB[0] && !help && s?.mode !== "build" && (
+        {!selU.length && !selB[0] && !help && s?.mode !== "build" && s?.mode !== "select" && s?.mode !== "rove" && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
             <p className="rounded-full bg-surface/90 px-3 py-1.5 text-center text-[12px] text-fg shadow">
               TAP a glowing rigger · DRAG to pan · PINCH to zoom
             </p>
           </div>
         )}
-        {!!selU.length && s?.mode !== "build" && (
+        {s?.mode === "rove" && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
+            <p className="rounded-full bg-ok/25 px-3 py-1.5 text-center text-[12px] text-fg shadow">
+              Tap map points for the patrol · Start when you have 2+
+            </p>
+          </div>
+        )}
+        {s?.mode === "select" && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
+            <p className="rounded-full bg-ok/25 px-3 py-1.5 text-center text-[12px] text-fg shadow">
+              Drag a box to select a squad · tap a unit to add/remove
+            </p>
+          </div>
+        )}
+        {!!selU.length && s?.mode !== "build" && s?.mode !== "rove" && s?.mode !== "select" && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
             <p className="rounded-full bg-ok/20 px-3 py-1.5 text-center text-[12px] text-fg shadow">
-              {workerOn
-                ? "Tap empty ground to move · tap a crystal to mine · tap the nexus to train"
-                : "Tap empty ground to move · crosshair then tap to attack"}
+              {workerOn && !militaryOn
+                ? "Tap empty ground to move · tap a crystal to mine"
+                : "Tap ground to move · Box to multi-select · double-tap a unit to select all of that type"}
             </p>
           </div>
         )}
@@ -422,13 +471,17 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
                 ? s.ghost?.held
                   ? "Dragging footprint — camera locked"
                   : "Pan the map, then tap the green square"
-                : selU.length
-                  ? `${selU.length} selected — tap the map to order`
-                  : selB[0]
-                    ? selB[0].progress < 1
-                      ? `${BUILDINGS[selB[0].type].name} ${((selB[0].progress * 100) | 0)}% — cancel below`
-                      : `${BUILDINGS[selB[0].type].name} — tap a card to train`
-                    : "Tap a unit · drag to pan · pinch to zoom"}
+                : s?.mode === "rove"
+                  ? `Rove ${s.roveDraft.length} points — tap map, then Start`
+                  : s?.mode === "select"
+                    ? "Box-select · tap units to add"
+                    : selU.length
+                      ? `${selU.length} selected — tap map to move`
+                      : selB[0]
+                        ? selB[0].progress < 1
+                          ? `${BUILDINGS[selB[0].type].name} ${((selB[0].progress * 100) | 0)}% — cancel below`
+                          : `${BUILDINGS[selB[0].type].name} — tap a card to train`
+                        : "Tap a unit · drag to pan · pinch to zoom"}
             </p>
             <div className="flex gap-1">
               <IconBtn
@@ -456,7 +509,88 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
             </div>
           </div>
 
+          {(militaryOn || (s && s.squads.some((q) => q.length))) && s?.mode !== "build" && (
+            <div className="mb-2 flex flex-wrap items-center gap-1">
+              {[0, 1, 2, 3].map((i) => (
+                <SquadBtn
+                  key={i}
+                  n={i + 1}
+                  filled={(s?.squads[i].length ?? 0) > 0}
+                  onSelect={() => {
+                    sessRef.current?.selectSquad(i);
+                    setHud((x) => x + 1);
+                  }}
+                  onAssign={() => {
+                    sessRef.current?.assignSquad(i);
+                    setHud((x) => x + 1);
+                  }}
+                />
+              ))}
+              {militaryOn && (
+                <>
+                  <IconBtn
+                    label="Hunt"
+                    active={stanceOn === "attack"}
+                    onClick={() => {
+                      sessRef.current?.setStance("attack");
+                      setHud((x) => x + 1);
+                    }}
+                  >
+                    <Swords className="size-4" />
+                  </IconBtn>
+                  <IconBtn
+                    label="Hold"
+                    active={stanceOn === "hold"}
+                    onClick={() => {
+                      sessRef.current?.setStance("hold");
+                      setHud((x) => x + 1);
+                    }}
+                  >
+                    <Shield className="size-4" />
+                  </IconBtn>
+                  <IconBtn
+                    label="Rove"
+                    active={s?.mode === "rove" || stanceOn === "rove"}
+                    onClick={() => {
+                      sessRef.current?.setStance("rove");
+                      setHud((x) => x + 1);
+                    }}
+                  >
+                    <Route className="size-4" />
+                  </IconBtn>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+            {s?.mode === "rove" && (
+              <>
+                <button
+                  type="button"
+                  className="col-span-2 flex h-14 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-border bg-elevated text-sm font-medium"
+                  onClick={() => {
+                    sessRef.current?.cancelRove();
+                    setHud((n) => n + 1);
+                  }}
+                >
+                  <X className="size-4" />
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={(s.roveDraft.length ?? 0) < 2}
+                  className="col-span-2 flex h-14 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-ok bg-ok/25 text-sm font-medium disabled:opacity-40"
+                  onClick={() => {
+                    sessRef.current?.confirmRove();
+                    setHud((n) => n + 1);
+                  }}
+                >
+                  <Check className="size-4" />
+                  Start rove
+                </button>
+              </>
+            )}
             {s?.mode === "build" && s.buildType && (
               <>
                 <button
@@ -486,6 +620,7 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
             )}
             {workerOn &&
               s?.mode !== "build" &&
+              s?.mode !== "rove" &&
               (Object.keys(BUILDINGS) as BuildingType[])
                 .filter((t) => t !== "core")
                 .map((t) => (
@@ -553,7 +688,14 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
                 square</b> to pick it up, drag it, then tap <b>Place</b>. Cancel backs out.
                 Tap an unfinished building and <b>Cancel build</b> to refund.
               </li>
-              <li>Use the square map to jump the camera. The ? button reopens this.</li>
+              <li>
+                <b>Box</b> then drag to select many. Double-tap a troop to select all of that type.
+                Tap squad <b>1–4</b> to recall, <b>hold</b> 1–4 to save the current selection.
+              </li>
+              <li>
+                Squad orders: <b>swords</b> hunt anything in view, <b>shield</b> hold and shoot
+                only in range, <b>route</b> patrol points and fight anything they see.
+              </li>
             </ol>
             <Button
               className="mt-5 w-full"
@@ -608,6 +750,38 @@ function Stat({ label, value }: { label: string; value: string | number }) {
       <span className="mr-1 text-subtle">{label}</span>
       <span className="font-medium text-fg">{value}</span>
     </span>
+  );
+}
+
+function SquadBtn({
+  n,
+  filled,
+  onSelect,
+  onAssign,
+}: {
+  n: number;
+  filled: boolean;
+  onSelect: () => void;
+  onAssign: () => void;
+}) {
+  const t = useRef(0);
+  return (
+    <button
+      type="button"
+      aria-label={`Squad ${n}. Tap to select, hold to save.`}
+      onPointerDown={() => {
+        t.current = Date.now();
+      }}
+      onPointerUp={() => {
+        if (Date.now() - t.current > 380) onAssign();
+        else onSelect();
+      }}
+      className={`grid size-11 place-items-center rounded-[var(--radius-sm)] border text-sm font-semibold ${
+        filled ? "border-accent bg-elevated" : "border-border bg-elevated/60"
+      }`}
+    >
+      {n}
+    </button>
   );
 }
 

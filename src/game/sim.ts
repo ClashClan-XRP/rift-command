@@ -145,6 +145,11 @@ export class World {
       cooldown: 0,
       air: def.air,
       radius: def.radius,
+      stance: type === "worker" ? "hold" : "attack",
+      holdX: x,
+      holdY: y,
+      rove: [],
+      roveI: 0,
     };
     this.units.push(u);
     return u;
@@ -295,6 +300,10 @@ export class World {
         }
         break;
       }
+      case "stance": {
+        this.issueStance(owner, cmd.ids, cmd.stance, cmd.holdX, cmd.holdY, cmd.rove);
+        break;
+      }
       case "cancel": {
         const b = this.buildings.find((x) => x.id === cmd.bid && x.owner === owner);
         if (!b) break;
@@ -349,6 +358,34 @@ export class World {
       u.order = "attack";
       u.targetId = tid;
       u.path = null;
+    }
+  }
+
+  private issueStance(
+    owner: number,
+    ids: number[],
+    stance: "attack" | "hold" | "rove",
+    holdX?: number,
+    holdY?: number,
+    rove?: { x: number; y: number }[],
+  ) {
+    for (const u of this.ownedUnits(owner, ids)) {
+      u.stance = stance;
+      u.path = null;
+      if (stance === "hold") {
+        u.holdX = holdX ?? u.x;
+        u.holdY = holdY ?? u.y;
+        u.order = "idle";
+        u.targetId = -1;
+      } else if (stance === "rove") {
+        u.rove = rove && rove.length >= 2 ? rove.map((p) => ({ x: p.x, y: p.y })) : u.rove;
+        u.roveI = 0;
+        u.order = "idle";
+        u.targetId = -1;
+      } else {
+        u.order = "idle";
+        u.targetId = -1;
+      }
     }
   }
 
@@ -558,26 +595,12 @@ export class World {
         this.stepGather(u);
         continue;
       }
-      if (u.order === "attack") {
-        this.stepAttack(u);
-        continue;
-      }
-      if (u.order === "attackMove") {
-        const tgt = this.acquire(u.x, u.y, SIGHT, u.owner, !u.air);
-        if (tgt) {
-          u.targetId = tgt.kind === "u" ? tgt.u.id : tgt.b.id;
-          this.stepAttack(u);
-        } else {
-          this.followPath(u);
-          if (!u.path) u.order = "idle";
-        }
-        continue;
-      }
       if (u.order === "move") {
         this.followPath(u);
         if (!u.path) u.order = "idle";
         continue;
       }
+      this.stepCombat(u);
     }
   }
 
@@ -644,40 +667,96 @@ export class World {
     }
   }
 
-  private stepAttack(u: Unit) {
-    const tgt = this.findTarget(u.targetId);
+  private weaponRange(
+    u: Unit,
+    tgt: { kind: "u"; u: Unit } | { kind: "b"; b: Building } | null,
+  ) {
+    let extra = 10;
+    if (tgt?.kind === "u") extra += tgt.u.radius;
+    if (tgt?.kind === "b") extra += Math.max(tgt.b.w, tgt.b.h) * CELL * 0.32;
+    return UNITS[u.type].range + extra;
+  }
+
+  private stepCombat(u: Unit) {
+    const stance = u.stance || "attack";
+    let tgt = u.targetId > 0 ? this.findTarget(u.targetId) : null;
     if (!tgt) {
-      u.order = "idle";
+      const scan = stance === "hold" ? UNITS[u.type].range + 28 : SIGHT;
+      const found = this.acquire(u.x, u.y, scan, u.owner, true);
+      if (found) {
+        if (stance === "hold") {
+          const wr = this.weaponRange(u, found);
+          const fx = found.kind === "u" ? found.u.x : found.b.x;
+          const fy = found.kind === "u" ? found.u.y : found.b.y;
+          if (dist2(u.x, u.y, fx, fy) > wr * wr) {
+            this.stepHoldOrRove(u);
+            return;
+          }
+        }
+        u.targetId = found.kind === "u" ? found.u.id : found.b.id;
+        tgt = found;
+      }
+    }
+    if (!tgt) {
       u.targetId = -1;
+      if (u.order === "attackMove") {
+        this.followPath(u);
+        if (!u.path) u.order = "idle";
+        return;
+      }
+      this.stepHoldOrRove(u);
       return;
     }
     const def = UNITS[u.type];
-    const range = def.range;
     const tx = tgt.kind === "u" ? tgt.u.x : tgt.b.x;
     const ty = tgt.kind === "u" ? tgt.u.y : tgt.b.y;
+    const wr = this.weaponRange(u, tgt);
     const d2 = dist2(u.x, u.y, tx, ty);
-    if (d2 <= range * range) {
+    if (d2 <= wr * wr) {
       u.path = null;
       u.facing = Math.atan2(ty - u.y, tx - u.x);
       if (u.cooldown <= 0) {
         const race = raceOf(this.players[u.owner].race);
-        this.fireAt(
-          u.owner,
-          u.x,
-          u.y,
-          tgt,
-          def.dmg * race.dmg,
-          def.splash,
-          range,
-          def.bonusBuilding,
-        );
+        this.fireAt(u.owner, u.x, u.y, tgt, def.dmg * race.dmg, def.splash, def.range, def.bonusBuilding);
         u.cooldown = def.cooldown;
         this.events.push("shot");
       }
-    } else {
+      return;
+    }
+    if (stance === "hold") {
+      this.stepHoldOrRove(u);
+      return;
+    }
+    if (Math.sqrt(d2) < 140) this.steerToward(u, tx, ty);
+    else {
       this.pathUnit(u, tx, ty);
       this.followPath(u);
     }
+  }
+
+  private stepHoldOrRove(u: Unit) {
+    if (u.stance === "rove" && u.rove.length >= 2) {
+      const p = u.rove[u.roveI % u.rove.length];
+      if (dist2(u.x, u.y, p.x, p.y) < 22 * 22) {
+        u.roveI = (u.roveI + 1) % u.rove.length;
+        u.path = null;
+        return;
+      }
+      if (!u.path) this.pathUnit(u, p.x, p.y);
+      this.followPath(u);
+      return;
+    }
+    if (u.stance === "hold") {
+      if (dist2(u.x, u.y, u.holdX, u.holdY) > 16 * 16) {
+        this.steerToward(u, u.holdX, u.holdY);
+      }
+      return;
+    }
+    u.order = "idle";
+  }
+
+  private stepAttack(u: Unit) {
+    this.stepCombat(u);
   }
 
   private fireAt(
@@ -1083,9 +1162,14 @@ export class World {
         buildType: null,
         buildGx: 0,
         buildGy: 0,
-        cooldown: 0,
+        cooldown: prev?.cooldown ?? 0,
         air: !!air,
         radius: UNITS[type].radius,
+        stance: prev?.stance ?? (type === "worker" ? "hold" : "attack"),
+        holdX: prev?.holdX ?? x,
+        holdY: prev?.holdY ?? y,
+        rove: prev?.rove ?? [],
+        roveI: prev?.roveI ?? 0,
       };
       this.units.push(u);
     }

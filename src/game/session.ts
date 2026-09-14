@@ -3,9 +3,9 @@ import { sfxBoom, sfxMove, sfxSelect, sfxShot, sfxTrain, unlockAudio } from "./a
 import { BUILDINGS, CELL, TICK } from "./config";
 import { loadArt, type Cam } from "./render";
 import { World } from "./sim";
-import type { BuildingType, Command, MatchSetup, Unit, UnitType } from "./types";
+import type { BuildingType, Command, MatchSetup, Stance, Unit, UnitType } from "./types";
 
-export type PointerMode = "pan" | "select" | "attack" | "build";
+export type PointerMode = "pan" | "select" | "attack" | "build" | "rove";
 
 export class Session {
   world: World;
@@ -26,6 +26,9 @@ export class Session {
   hover = { x: 0, y: 0 };
   onCommand?: (cmd: Command) => void;
   hud = 0;
+  squads: number[][] = [[], [], [], []];
+  lastPick: { type: UnitType; t: number } | null = null;
+  roveDraft: { x: number; y: number }[] = [];
 
   constructor(setup: MatchSetup, isHost: boolean) {
     this.world = new World(setup);
@@ -97,6 +100,25 @@ export class Session {
   tapWorld(x: number, y: number, additive: boolean) {
     unlockAudio();
     if (this.mode === "build" && this.buildType) return;
+    if (this.mode === "rove") {
+      this.roveDraft.push({ x, y });
+      return;
+    }
+    if (this.mode === "select") {
+      const mine = this.world.unitAt(x, y, this.localOwner, 36);
+      if (mine) {
+        if (this.selUnits.has(mine.id)) this.selUnits.delete(mine.id);
+        else {
+          this.selBuildings.clear();
+          this.selUnits.add(mine.id);
+        }
+        sfxSelect();
+        return;
+      }
+      this.selUnits.clear();
+      this.selBuildings.clear();
+      return;
+    }
     if (this.mode === "attack") {
       const u = this.world.unitAt(x, y);
       const b = this.world.buildingAt(x, y);
@@ -113,11 +135,22 @@ export class Session {
     const anyU = this.world.unitAt(x, y, undefined, slop);
     const b = this.world.buildingAt(x, y);
     if (mine) {
-      if (!additive) {
+      const adding = additive || this.selUnits.size > 0;
+      if (!adding) {
         this.selUnits.clear();
         this.selBuildings.clear();
+      } else if (this.selUnits.has(mine.id) && this.selUnits.size > 1) {
+        this.selUnits.delete(mine.id);
+        sfxSelect();
+        return;
       }
+      this.selBuildings.clear();
       this.selUnits.add(mine.id);
+      const now = performance.now();
+      if (this.lastPick && this.lastPick.type === mine.type && now - this.lastPick.t < 420) {
+        this.selectAllType(mine.type);
+      }
+      this.lastPick = { type: mine.type, t: now };
       sfxSelect();
       return;
     }
@@ -186,6 +219,87 @@ export class Session {
 
   selectedWorkers() {
     return this.world.units.filter((u) => this.selUnits.has(u.id) && u.type === "worker");
+  }
+
+  selectedMilitary() {
+    return this.world.units.filter((u) => this.selUnits.has(u.id) && u.type !== "worker");
+  }
+
+  selectAllType(type: UnitType) {
+    this.selUnits.clear();
+    this.selBuildings.clear();
+    for (const u of this.world.units) {
+      if (u.owner === this.localOwner && u.type === type && u.hp > 0) this.selUnits.add(u.id);
+    }
+  }
+
+  assignSquad(i: number) {
+    if (i < 0 || i > 3) return;
+    this.squads[i] = [...this.selUnits];
+  }
+
+  selectSquad(i: number) {
+    if (i < 0 || i > 3) return;
+    const live = new Set(
+      this.squads[i].filter((id) => this.world.units.some((u) => u.id === id && u.hp > 0 && u.owner === this.localOwner)),
+    );
+    this.selUnits = live;
+    this.selBuildings.clear();
+    if (live.size) {
+      let sx = 0;
+      let sy = 0;
+      let n = 0;
+      for (const u of this.world.units) {
+        if (!live.has(u.id)) continue;
+        sx += u.x;
+        sy += u.y;
+        n++;
+      }
+      if (n) {
+        this.cam.x = sx / n;
+        this.cam.y = sy / n;
+      }
+    }
+  }
+
+  setStance(stance: Stance) {
+    const ids = [...this.selUnits].filter((id) => {
+      const u = this.world.units.find((x) => x.id === id);
+      return u && u.type !== "worker";
+    });
+    if (!ids.length) return;
+    if (stance === "rove") {
+      this.mode = "rove";
+      const cx =
+        this.world.units.filter((u) => ids.includes(u.id)).reduce((s, u) => s + u.x, 0) / ids.length;
+      const cy =
+        this.world.units.filter((u) => ids.includes(u.id)).reduce((s, u) => s + u.y, 0) / ids.length;
+      this.roveDraft = [{ x: cx, y: cy }];
+      return;
+    }
+    this.issue({
+      k: "stance",
+      ids,
+      stance,
+    });
+    this.mode = "pan";
+  }
+
+  confirmRove() {
+    if (this.roveDraft.length < 2) return;
+    const ids = [...this.selUnits].filter((id) => {
+      const u = this.world.units.find((x) => x.id === id);
+      return u && u.type !== "worker";
+    });
+    if (!ids.length) return;
+    this.issue({ k: "stance", ids, stance: "rove", rove: this.roveDraft.map((p) => ({ ...p })) });
+    this.roveDraft = [];
+    this.mode = "pan";
+  }
+
+  cancelRove() {
+    this.roveDraft = [];
+    this.mode = "pan";
   }
 
   train(utype: UnitType) {
