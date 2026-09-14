@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Check,
+  ChevronUp,
   Crosshair,
+  GripHorizontal,
   Home,
+  LayoutGrid,
   Maximize2,
+  MoreVertical,
   Pause,
   Route,
   Shield,
@@ -509,7 +513,7 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
             </div>
           </div>
 
-          {(militaryOn || (s && s.squads.some((q) => q.length))) && s?.mode !== "build" && (
+          {(militaryOn || selU.length >= 2 || (s && s.squads.some((q) => q.length))) && s?.mode !== "build" && (
             <div className="mb-2 flex flex-wrap items-center gap-1">
               {[0, 1, 2, 3].map((i) => (
                 <SquadBtn
@@ -558,8 +562,30 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
                   >
                     <Route className="size-4" />
                   </IconBtn>
+                  <span className="mx-0.5 h-6 w-px bg-border" />
                 </>
               )}
+              {selU.length >= 2 &&
+                (
+                  [
+                    ["box", LayoutGrid, "Box"],
+                    ["line", GripHorizontal, "Line"],
+                    ["wedge", ChevronUp, "Wedge"],
+                    ["column", MoreVertical, "Column"],
+                  ] as const
+                ).map(([kind, Icon, label]) => (
+                  <IconBtn
+                    key={kind}
+                    label={label}
+                    active={s?.formKind === kind}
+                    onClick={() => {
+                      sessRef.current?.setFormation(kind);
+                      setHud((x) => x + 1);
+                    }}
+                  >
+                    <Icon className="size-4" />
+                  </IconBtn>
+                ))}
             </div>
           )}
 
@@ -693,8 +719,9 @@ export function MatchView({ setup, isHost, onExit, onCommand, sessionRef }: Prop
                 Tap squad <b>1–4</b> to recall, <b>hold</b> 1–4 to save the current selection.
               </li>
               <li>
-                Squad orders: <b>swords</b> hunt anything in view, <b>shield</b> hold and shoot
-                only in range, <b>route</b> patrol points and fight anything they see.
+                Squad orders: <b>swords</b> hunt, <b>shield</b> hold, <b>route</b> patrol.
+                Formation (grid / line / wedge / column) is how they stand and march — tap a shape
+                to assemble, then tap the map to move as a squad.
               </li>
             </ol>
             <Button

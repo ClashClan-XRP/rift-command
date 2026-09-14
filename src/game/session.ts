@@ -3,7 +3,7 @@ import { sfxBoom, sfxMove, sfxSelect, sfxShot, sfxTrain, unlockAudio } from "./a
 import { BUILDINGS, CELL, TICK } from "./config";
 import { loadArt, type Cam } from "./render";
 import { World } from "./sim";
-import type { BuildingType, Command, MatchSetup, Stance, Unit, UnitType } from "./types";
+import type { BuildingType, Command, FormationKind, MatchSetup, Stance, Unit, UnitType } from "./types";
 
 export type PointerMode = "pan" | "select" | "attack" | "build" | "rove";
 
@@ -27,6 +27,8 @@ export class Session {
   onCommand?: (cmd: Command) => void;
   hud = 0;
   squads: number[][] = [[], [], [], []];
+  squadForm: FormationKind[] = ["box", "box", "box", "box"];
+  formKind: FormationKind = "box";
   lastPick: { type: UnitType; t: number } | null = null;
   roveDraft: { x: number; y: number }[] = [];
 
@@ -124,7 +126,7 @@ export class Session {
       const b = this.world.buildingAt(x, y);
       const tid = u?.id ?? b?.id;
       if (tid !== undefined) this.issue({ k: "attack", ids: [...this.selUnits], tid });
-      else this.issue({ k: "move", ids: [...this.selUnits], x, y, am: true });
+      else this.issue({ k: "move", ids: [...this.selUnits], x, y, am: true, form: this.formKind });
       this.mode = "pan";
       return;
     }
@@ -169,7 +171,7 @@ export class Session {
       } else if (b && b.owner !== this.localOwner) {
         this.issue({ k: "attack", ids: [...this.selUnits], tid: b.id });
       } else {
-        this.issue({ k: "move", ids: [...this.selUnits], x, y, am: false });
+        this.issue({ k: "move", ids: [...this.selUnits], x, y, am: false, form: this.formKind });
       }
       return;
     }
@@ -236,6 +238,7 @@ export class Session {
   assignSquad(i: number) {
     if (i < 0 || i > 3) return;
     this.squads[i] = [...this.selUnits];
+    this.squadForm[i] = this.formKind;
   }
 
   selectSquad(i: number) {
@@ -245,6 +248,7 @@ export class Session {
     );
     this.selUnits = live;
     this.selBuildings.clear();
+    if (this.squadForm[i]) this.formKind = this.squadForm[i];
     if (live.size) {
       let sx = 0;
       let sy = 0;
@@ -281,6 +285,7 @@ export class Session {
       k: "stance",
       ids,
       stance,
+      form: this.formKind,
     });
     this.mode = "pan";
   }
@@ -292,7 +297,7 @@ export class Session {
       return u && u.type !== "worker";
     });
     if (!ids.length) return;
-    this.issue({ k: "stance", ids, stance: "rove", rove: this.roveDraft.map((p) => ({ ...p })) });
+    this.issue({ k: "stance", ids, stance: "rove", rove: this.roveDraft.map((p) => ({ ...p })), form: this.formKind });
     this.roveDraft = [];
     this.mode = "pan";
   }
@@ -300,6 +305,17 @@ export class Session {
   cancelRove() {
     this.roveDraft = [];
     this.mode = "pan";
+  }
+
+  setFormation(kind: FormationKind) {
+    this.formKind = kind;
+    const ids = [...this.selUnits];
+    if (ids.length < 2) return;
+    const units = this.world.units.filter((u) => ids.includes(u.id) && u.hp > 0);
+    if (units.length < 2) return;
+    const cx = units.reduce((s, u) => s + u.x, 0) / units.length;
+    const cy = units.reduce((s, u) => s + u.y, 0) / units.length;
+    this.issue({ k: "move", ids, x: cx, y: cy, am: false, form: kind });
   }
 
   train(utype: UnitType) {

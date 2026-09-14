@@ -7,6 +7,7 @@ export type SlotKind = "open" | "human" | "cpu" | "closed";
 export type MapId = "bastion" | "crucible" | "hexgate";
 
 export type Stance = "attack" | "hold" | "rove";
+export type FormationKind = "box" | "line" | "wedge" | "column";
 
 export type OrderKind =
   | "idle"
@@ -112,6 +113,10 @@ export interface Unit {
   holdY: number;
   rove: Vec[];
   roveI: number;
+  formKind: FormationKind;
+  formX: number;
+  formY: number;
+  formFacing: number;
 }
 
 export interface Building {
@@ -199,7 +204,7 @@ export interface GameMap {
 }
 
 export type Command =
-  | { k: "move"; ids: number[]; x: number; y: number; am: boolean }
+  | { k: "move"; ids: number[]; x: number; y: number; am: boolean; form?: FormationKind }
   | { k: "stop"; ids: number[] }
   | { k: "attack"; ids: number[]; tid: number }
   | { k: "gather"; ids: number[]; nid: number }
@@ -207,7 +212,7 @@ export type Command =
   | { k: "train"; bid: number; utype: UnitType }
   | { k: "rally"; bid: number; x: number; y: number }
   | { k: "cancel"; bid: number }
-  | { k: "stance"; ids: number[]; stance: Stance; holdX?: number; holdY?: number; rove?: Vec[] };
+  | { k: "stance"; ids: number[]; stance: Stance; holdX?: number; holdY?: number; rove?: Vec[]; form?: FormationKind };
 
 export interface LobbyState {
   hostId: string;

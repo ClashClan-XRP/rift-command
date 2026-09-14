@@ -18,10 +18,12 @@ import {
   raceOf,
 } from "./config";
 import { buildMap } from "./maps";
+import { assignFormation, slotWorld } from "./formation";
 import type {
   Building,
   BuildingType,
   Command,
+  FormationKind,
   GameMap,
   MatchSetup,
   PlayerState,
@@ -150,6 +152,10 @@ export class World {
       holdY: y,
       rove: [],
       roveI: 0,
+      formKind: "box",
+      formX: 0,
+      formY: 0,
+      formFacing: 0,
     };
     this.units.push(u);
     return u;
@@ -265,7 +271,7 @@ export class World {
     if (!this.players[owner]?.alive) return;
     switch (cmd.k) {
       case "move":
-        this.issueMove(owner, cmd.ids, cmd.x, cmd.y, cmd.am);
+        this.issueMove(owner, cmd.ids, cmd.x, cmd.y, cmd.am, cmd.form);
         break;
       case "stop":
         for (const u of this.ownedUnits(owner, cmd.ids)) {
@@ -301,7 +307,7 @@ export class World {
         break;
       }
       case "stance": {
-        this.issueStance(owner, cmd.ids, cmd.stance, cmd.holdX, cmd.holdY, cmd.rove);
+        this.issueStance(owner, cmd.ids, cmd.stance, cmd.holdX, cmd.holdY, cmd.rove, cmd.form);
         break;
       }
       case "cancel": {
@@ -336,18 +342,29 @@ export class World {
     return this.units.filter((u) => u.owner === owner && set.has(u.id) && u.hp > 0);
   }
 
-  private issueMove(owner: number, ids: number[], x: number, y: number, am: boolean) {
+  private issueMove(owner: number, ids: number[], x: number, y: number, am: boolean, form?: FormationKind) {
     const list = this.ownedUnits(owner, ids);
-    const cols = Math.ceil(Math.sqrt(list.length));
-    list.forEach((u, i) => {
-      const ox = ((i % cols) - (cols - 1) / 2) * 22;
-      const oy = ((i / cols) | 0) * 22;
+    if (!list.length) return;
+    const kind = form ?? list[0].formKind ?? "box";
+    const dest = { x, y };
+    const slots = assignFormation(list, dest, kind);
+    const byId = new Map(slots.map((s) => [s.id, s]));
+    for (const u of list) {
+      const slot = byId.get(u.id);
       u.order = am ? "attackMove" : "move";
       u.targetId = -1;
       u.nodeId = -1;
       u.buildType = null;
-      this.pathUnit(u, x + ox, y + oy);
-    });
+      u.formKind = kind;
+      if (slot) {
+        u.formX = slot.ox;
+        u.formY = slot.oy;
+        u.formFacing = slot.facing;
+        this.pathUnit(u, slot.x, slot.y);
+      } else {
+        this.pathUnit(u, x, y);
+      }
+    }
   }
 
   private issueAttack(owner: number, ids: number[], tid: number) {
@@ -368,21 +385,54 @@ export class World {
     holdX?: number,
     holdY?: number,
     rove?: { x: number; y: number }[],
+    form?: FormationKind,
   ) {
-    for (const u of this.ownedUnits(owner, ids)) {
+    const list = this.ownedUnits(owner, ids);
+    const kind = form ?? list[0]?.formKind ?? "box";
+    for (const u of list) {
       u.stance = stance;
       u.path = null;
-      if (stance === "hold") {
-        u.holdX = holdX ?? u.x;
-        u.holdY = holdY ?? u.y;
+      u.formKind = kind;
+    }
+    if (stance === "hold") {
+      const cx = holdX ?? list.reduce((s, u) => s + u.x, 0) / Math.max(1, list.length);
+      const cy = holdY ?? list.reduce((s, u) => s + u.y, 0) / Math.max(1, list.length);
+      const dest = { x: cx, y: cy };
+      const face = list[0]?.formFacing ?? 0;
+      const slots = assignFormation(list, dest, kind, face);
+      const byId = new Map(slots.map((s) => [s.id, s]));
+      for (const u of list) {
+        const slot = byId.get(u.id);
+        u.holdX = slot?.x ?? u.x;
+        u.holdY = slot?.y ?? u.y;
         u.order = "idle";
         u.targetId = -1;
-      } else if (stance === "rove") {
-        u.rove = rove && rove.length >= 2 ? rove.map((p) => ({ x: p.x, y: p.y })) : u.rove;
+        if (slot) {
+          u.formX = slot.ox;
+          u.formY = slot.oy;
+          u.formFacing = slot.facing;
+        }
+      }
+    } else if (stance === "rove") {
+      const pts = rove && rove.length >= 2 ? rove.map((p) => ({ x: p.x, y: p.y })) : null;
+      const face = pts ? Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x) : list[0]?.formFacing ?? 0;
+      const origin = pts ? pts[0] : { x: list[0]?.x ?? 0, y: list[0]?.y ?? 0 };
+      const slots = assignFormation(list, origin, kind, face);
+      const byId = new Map(slots.map((s) => [s.id, s]));
+      for (const u of list) {
+        const slot = byId.get(u.id);
+        if (pts) u.rove = pts;
         u.roveI = 0;
         u.order = "idle";
         u.targetId = -1;
-      } else {
+        if (slot) {
+          u.formX = slot.ox;
+          u.formY = slot.oy;
+          u.formFacing = slot.facing;
+        }
+      }
+    } else {
+      for (const u of list) {
         u.order = "idle";
         u.targetId = -1;
       }
@@ -736,13 +786,17 @@ export class World {
 
   private stepHoldOrRove(u: Unit) {
     if (u.stance === "rove" && u.rove.length >= 2) {
-      const p = u.rove[u.roveI % u.rove.length];
-      if (dist2(u.x, u.y, p.x, p.y) < 22 * 22) {
+      const i = u.roveI % u.rove.length;
+      const p = u.rove[i];
+      const prev = u.rove[(i + u.rove.length - 1) % u.rove.length];
+      const face = Math.atan2(p.y - prev.y, p.x - prev.x) || u.formFacing;
+      const dest = slotWorld({ x: u.formX, y: u.formY }, p, face);
+      if (dist2(u.x, u.y, dest.x, dest.y) < 22 * 22) {
         u.roveI = (u.roveI + 1) % u.rove.length;
         u.path = null;
         return;
       }
-      if (!u.path) this.pathUnit(u, p.x, p.y);
+      if (!u.path) this.pathUnit(u, dest.x, dest.y);
       this.followPath(u);
       return;
     }
@@ -1170,6 +1224,10 @@ export class World {
         holdY: prev?.holdY ?? y,
         rove: prev?.rove ?? [],
         roveI: prev?.roveI ?? 0,
+        formKind: prev?.formKind ?? "box",
+        formX: prev?.formX ?? 0,
+        formY: prev?.formY ?? 0,
+        formFacing: prev?.formFacing ?? 0,
       };
       this.units.push(u);
     }
