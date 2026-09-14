@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Copy, Signal } from "lucide-react";
 import { useP2PRoom } from "@/lib/multiplayer";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { MAP_META } from "@/game/maps";
 import { RACES } from "@/game/config";
 import { MatchView } from "@/components/game/MatchView";
@@ -22,37 +23,89 @@ import type {
 } from "@/game/types";
 
 const DIFFS: Difficulty[] = ["idle", "easy", "standard", "hard", "insane"];
+const KINDS: { id: SlotKind; label: string }[] = [
+  { id: "open", label: "Open" },
+  { id: "human", label: "Human" },
+  { id: "cpu", label: "Computer" },
+  { id: "closed", label: "Closed" },
+];
 
-function emptySlots(): SlotConfig[] {
+export function markRoomLeader(code: string) {
+  try {
+    sessionStorage.setItem(`rift-host-${code}`, "1");
+  } catch {
+    /* private mode */
+  }
+}
+
+function isRoomLeader(code: string) {
+  try {
+    return sessionStorage.getItem(`rift-host-${code}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function emptySlots(leaderName: string, lead: boolean): SlotConfig[] {
   return Array.from({ length: 6 }, (_, i) => ({
-    kind: i === 0 ? "open" : i === 1 ? "cpu" : "closed",
-    name: i === 0 ? "Host" : i === 1 ? "CPU 2" : "",
+    kind: i === 0 ? (lead ? "human" : "open") : i === 1 ? "cpu" : "closed",
+    name: i === 0 ? (lead ? leaderName : "Host") : i === 1 ? "CPU 2" : "",
     race: (["aegis", "striker", "foundry"] as RaceId[])[i % 3],
-    difficulty: "standard",
+    difficulty: "standard" as Difficulty,
     team: 0,
   }));
 }
 
+function Chip({
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "h-11 min-w-0 flex-1 rounded-[var(--radius-sm)] border px-2 text-[13px] font-medium",
+        active ? "border-accent bg-accent/20 text-fg" : "border-border bg-elevated text-muted",
+        disabled && "pointer-events-none opacity-40",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function Lobby({ code }: { code: string }) {
   const nav = useNavigate();
+  const lead = useMemo(() => isRoomLeader(code), [code]);
   const [name] = useState(
     () => localStorage.getItem("rift-name") || `Cmdr ${Math.floor(Math.random() * 90 + 10)}`,
   );
   const p2p = useP2PRoom({ room: code, name });
   const [lobby, setLobby] = useState<LobbyState>(() => ({
-    hostId: "",
+    hostId: lead ? "local" : "",
     mapId: "bastion",
     gameType: "ffa",
-    slots: emptySlots(),
+    slots: emptySlots(name, lead),
     started: false,
   }));
   const [setup, setSetup] = useState<MatchSetup | null>(null);
-  const [isHost, setIsHost] = useState(false);
+  const [isHost, setIsHost] = useState(lead);
   const sessionRef = useRef<Session | null>(null);
-  const hostRef = useRef(false);
+  const hostRef = useRef(lead);
+  const announced = useRef(false);
   const snapTimer = useRef<number>(0);
 
   const map = MAP_META.find((m) => m.id === lobby.mapId)!;
+  const liveCount = lobby.slots.filter((s) => s.kind === "human" || s.kind === "cpu").length;
 
   useEffect(() => {
     localStorage.setItem("rift-name", name);
@@ -63,8 +116,9 @@ export function Lobby({ code }: { code: string }) {
       const msg = data as { t: string; [k: string]: unknown };
       if (!msg || typeof msg.t !== "string") return;
       if (msg.t === "lobby") {
-        setLobby(msg.lobby as LobbyState);
-        hostRef.current = (msg.lobby as LobbyState).hostId === p2p.selfId;
+        const next = msg.lobby as LobbyState;
+        setLobby(next);
+        hostRef.current = next.hostId === p2p.selfId || lead;
         setIsHost(hostRef.current);
       }
       if (msg.t === "hello" && hostRef.current) {
@@ -85,10 +139,6 @@ export function Lobby({ code }: { code: string }) {
           return next;
         });
       }
-      if (msg.t === "start") {
-        const st = msg.setup as MatchSetup;
-        setSetup(st);
-      }
       if (msg.t === "cmd" && hostRef.current && sessionRef.current) {
         const owner = sessionRef.current.world.players.findIndex((p) => p.peerId === from);
         if (owner >= 0) sessionRef.current.applyRemote(msg.c as Command, owner);
@@ -98,38 +148,40 @@ export function Lobby({ code }: { code: string }) {
           msg.s as ReturnType<NonNullable<typeof sessionRef.current>["world"]["snapshot"]>,
         );
       }
+      if (msg.t === "start" && msg.slots && !setup) {
+        const slots = msg.slots as SlotConfig[];
+        const localOwner = Math.max(
+          0,
+          slots.findIndex((s) => s.peerId === p2p.selfId),
+        );
+        setSetup({
+          mapId: (msg.mapId as MapId) ?? "bastion",
+          gameType: (msg.gameType as GameType) ?? "ffa",
+          slots,
+          localOwner,
+          hostPeer: msg.hostPeer as string | undefined,
+        });
+      }
     });
-  }, [p2p]);
+  }, [p2p, setup, lead]);
 
   useEffect(() => {
     if (!p2p.joined) return;
-    if (!lobby.hostId) {
-      // First successful join: claim host if we appear first in roster.
-      const ids = [p2p.selfId, ...p2p.peers.map((p) => p.id)].sort();
-      const host = ids[0];
-      if (host === p2p.selfId && !hostRef.current) {
-        hostRef.current = true;
-        setIsHost(true);
-        setLobby((prev) => {
-          const slots = emptySlots();
-          slots[0] = {
-            kind: "human",
-            name,
-            race: "aegis",
-            difficulty: "standard",
-            peerId: p2p.selfId,
-            team: 0,
-          };
-          slots[1] = { ...slots[1], kind: "cpu", name: "CPU 2" };
-          const next = { ...prev, hostId: p2p.selfId, slots };
-          p2p.send({ t: "lobby", lobby: next });
-          return next;
-        });
-      } else if (host !== p2p.selfId) {
-        p2p.send({ t: "hello", name, race: "aegis" });
-      }
+    if (hostRef.current) {
+      if (announced.current) return;
+      announced.current = true;
+      setLobby((prev) => {
+        const slots = prev.slots.map((s, i) =>
+          i === 0 ? { ...s, kind: "human" as const, name, peerId: p2p.selfId } : s,
+        );
+        const next = { ...prev, hostId: p2p.selfId, slots };
+        p2p.send({ t: "lobby", lobby: next });
+        return next;
+      });
+      return;
     }
-  }, [p2p.joined, p2p.peers, p2p.selfId, lobby.hostId, name, p2p]);
+    p2p.send({ t: "hello", name, race: "aegis" });
+  }, [p2p.joined, p2p.peers.length, p2p, name]);
 
   useEffect(() => {
     if (!setup || !isHost) return;
@@ -150,13 +202,21 @@ export function Lobby({ code }: { code: string }) {
 
   const patch = (next: LobbyState) => {
     setLobby(next);
-    p2p.send({ t: "lobby", lobby: next });
+    if (p2p.joined) p2p.send({ t: "lobby", lobby: next });
+  };
+
+  const setSlot = (i: number, patchSlot: Partial<SlotConfig>) => {
+    const slots = lobby.slots.map((s, j) => (j === i ? { ...s, ...patchSlot } : s));
+    patch({ ...lobby, slots });
   };
 
   const launch = () => {
     const live = lobby.slots
       .filter((s) => s.kind === "human" || s.kind === "cpu")
-      .slice(0, map.maxPlayers);
+      .slice(0, map.maxPlayers)
+      .map((s, i) =>
+        i === 0 && isHost ? { ...s, kind: "human" as const, name, peerId: p2p.selfId } : s,
+      );
     if (live.length < 2) return;
     const payload = {
       t: "start" as const,
@@ -165,38 +225,18 @@ export function Lobby({ code }: { code: string }) {
       slots: live,
       hostPeer: p2p.selfId,
     };
-    p2p.send(payload);
-    const localOwner = Math.max(
-      0,
-      live.findIndex((s) => s.peerId === p2p.selfId),
-    );
+    if (p2p.joined) p2p.send(payload);
     setSetup({
       mapId: lobby.mapId,
       gameType: lobby.gameType,
       slots: live,
-      localOwner,
+      localOwner: Math.max(
+        0,
+        live.findIndex((s) => s.peerId === p2p.selfId || (isHost && s.kind === "human")),
+      ),
       hostPeer: p2p.selfId,
     });
   };
-
-  useEffect(() => {
-    return p2p.onMessage((_from, data) => {
-      const msg = data as { t?: string; mapId?: MapId; gameType?: GameType; slots?: SlotConfig[]; hostPeer?: string };
-      if (msg?.t === "start" && msg.slots && !setup) {
-        const localOwner = Math.max(
-          0,
-          msg.slots.findIndex((s) => s.peerId === p2p.selfId),
-        );
-        setSetup({
-          mapId: msg.mapId ?? "bastion",
-          gameType: msg.gameType ?? "ffa",
-          slots: msg.slots,
-          localOwner,
-          hostPeer: msg.hostPeer,
-        });
-      }
-    });
-  }, [p2p, setup]);
 
   if (setup) {
     return (
@@ -210,8 +250,10 @@ export function Lobby({ code }: { code: string }) {
     );
   }
 
+  const locked = !isHost;
+
   return (
-    <div className="min-h-dvh bg-bg px-4 pb-10 pt-[max(16px,env(safe-area-inset-top))] text-fg">
+    <div className="min-h-dvh bg-bg px-4 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(16px,env(safe-area-inset-top))] text-fg">
       <div className="mx-auto flex max-w-lg flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -224,18 +266,10 @@ export function Lobby({ code }: { code: string }) {
           </Badge>
         </div>
         <p className="text-sm text-muted">
-          {isHost ? "You lead the table. Pick map, mode, and who sits where." : "Waiting on the host to set the field."}
-          {p2p.joined
-            ? p2p.path === "mqtt"
-              ? " Handshake is public mesh — game traffic is phone-to-phone."
-              : " Handshake is on this app — game traffic is phone-to-phone."
-            : ""}
+          {isHost
+            ? "You lead this room. Tap a map, mode, and seats — you can start vs computers while friends link."
+            : "Waiting on the host to set the field."}
         </p>
-        {p2p.peers.some((p) => p.connectionState === "failed") ? (
-          <p className="text-xs text-danger">
-            One seat could not punch through. Ask them to retry on Wi-Fi, or keep the computer seats.
-          </p>
-        ) : null}
 
         <div className="flex gap-2">
           <Button
@@ -257,122 +291,114 @@ export function Lobby({ code }: { code: string }) {
             <button
               key={m.id}
               type="button"
-              disabled={!isHost}
+              disabled={locked}
               onClick={() => patch({ ...lobby, mapId: m.id })}
-              className={`overflow-hidden rounded-[var(--radius-md)] border text-left disabled:opacity-70 ${
-                lobby.mapId === m.id ? "border-accent" : "border-border"
-              }`}
+              className={cn(
+                "overflow-hidden rounded-[var(--radius-md)] border text-left",
+                lobby.mapId === m.id ? "border-accent" : "border-border",
+                locked && "pointer-events-none opacity-50",
+              )}
             >
-              <img src={m.thumb} alt="" className="aspect-square w-full object-cover" />
-              <span className="block px-2 py-1 text-[11px]">{m.name}</span>
+              <img src={m.thumb} alt="" className="pointer-events-none aspect-square w-full object-cover" />
+              <span className="block px-2 py-1.5 text-[11px] leading-tight">{m.name}</span>
             </button>
           ))}
         </div>
+        <p className="text-xs text-muted">{map.blurb}</p>
 
+        <Label>Game type</Label>
         <div className="flex gap-2">
           {(["ffa", "teams"] as GameType[]).map((g) => (
-            <Button
+            <Chip
               key={g}
-              size="sm"
-              disabled={!isHost}
-              variant={lobby.gameType === g ? "default" : "secondary"}
+              disabled={locked}
+              active={lobby.gameType === g}
               onClick={() => patch({ ...lobby, gameType: g })}
             >
               {g === "ffa" ? "Free for all" : "Teams"}
-            </Button>
+            </Chip>
           ))}
         </div>
 
-        <Label>Seats — host assigns computers and difficulty</Label>
+        <Label>Seats</Label>
         {lobby.slots.slice(0, map.maxPlayers).map((slot, i) => (
           <div
             key={i}
-            className="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface p-2"
+            className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-border bg-surface p-3"
           >
-            <Badge>{i + 1}</Badge>
-            {isHost ? (
-              <select
-                className="h-10 rounded-[var(--radius-sm)] border border-border bg-elevated px-2 text-sm"
-                value={slot.kind}
-                onChange={(e) => {
-                  const kind = e.target.value as SlotKind;
-                  const slots = lobby.slots.map((s, j) =>
-                    j === i
-                      ? {
-                          ...s,
-                          kind,
-                          name:
-                            kind === "cpu"
-                              ? `CPU ${i + 1}`
-                              : kind === "human"
-                                ? s.name || "Seat"
-                                : "",
-                          peerId: kind === "human" ? s.peerId : undefined,
-                        }
-                      : s,
-                  );
-                  patch({ ...lobby, slots });
-                }}
-              >
-                <option value="open">Open</option>
-                <option value="human">Human</option>
-                <option value="cpu">Computer</option>
-                <option value="closed">Closed</option>
-              </select>
-            ) : (
-              <span className="text-sm">{slot.kind}</span>
-            )}
-            <span className="min-w-0 flex-1 truncate text-sm">{slot.name || "—"}</span>
-            <select
-              className="h-10 rounded-[var(--radius-sm)] border border-border bg-elevated px-2 text-sm"
-              value={slot.race}
-              disabled={!isHost && slot.peerId !== p2p.selfId}
-              onChange={(e) => {
-                const slots = lobby.slots.map((s, j) =>
-                  j === i ? { ...s, race: e.target.value as RaceId } : s,
-                );
-                patch({ ...lobby, slots });
-              }}
-            >
-              {Object.values(RACES).map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
+            <div className="flex items-center justify-between gap-2">
+              <Badge>{i + 1}</Badge>
+              <span className="min-w-0 flex-1 truncate text-sm">{slot.name || "Empty"}</span>
+            </div>
+            <div className="flex gap-1.5">
+              {(i === 0 && isHost ? KINDS.filter((k) => k.id === "human") : KINDS).map((k) => (
+                <Chip
+                  key={k.id}
+                  disabled={locked}
+                  active={slot.kind === k.id}
+                  onClick={() =>
+                    setSlot(i, {
+                      kind: k.id,
+                      name:
+                        k.id === "cpu"
+                          ? `CPU ${i + 1}`
+                          : k.id === "human"
+                            ? i === 0
+                              ? name
+                              : slot.name || "Seat"
+                            : "",
+                      peerId: k.id === "human" ? slot.peerId ?? (i === 0 ? p2p.selfId : undefined) : undefined,
+                    })
+                  }
+                >
+                  {i === 0 && k.id === "human" ? "You" : k.label}
+                </Chip>
               ))}
-            </select>
-            {slot.kind === "cpu" && isHost && (
-              <select
-                className="h-10 rounded-[var(--radius-sm)] border border-border bg-elevated px-2 text-sm"
-                value={slot.difficulty}
-                onChange={(e) => {
-                  const slots = lobby.slots.map((s, j) =>
-                    j === i ? { ...s, difficulty: e.target.value as Difficulty } : s,
-                  );
-                  patch({ ...lobby, slots });
-                }}
-              >
-                {DIFFS.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
+            </div>
+            {slot.kind !== "closed" && slot.kind !== "open" && (
+              <div className="flex gap-1.5">
+                {Object.values(RACES).map((r) => (
+                  <Chip
+                    key={r.id}
+                    disabled={locked && slot.peerId !== p2p.selfId}
+                    active={slot.race === r.id}
+                    onClick={() => setSlot(i, { race: r.id })}
+                  >
+                    {r.name}
+                  </Chip>
                 ))}
-              </select>
+              </div>
+            )}
+            {slot.kind === "cpu" && (
+              <div className="flex flex-wrap gap-1.5">
+                {DIFFS.map((d) => (
+                  <Chip
+                    key={d}
+                    disabled={locked}
+                    active={slot.difficulty === d}
+                    onClick={() => setSlot(i, { difficulty: d })}
+                  >
+                    {d}
+                  </Chip>
+                ))}
+              </div>
             )}
           </div>
         ))}
 
-        {p2p.peers.some((p) => p.connectionState === "failed") && (
+        {p2p.peers.some((p) => p.connectionState === "failed") ? (
           <p className="text-xs text-danger">
-            A peer could not connect (strict network). They can still spectate the lobby; try a new room if the mesh fails.
+            One seat could not punch through. Keep them as a computer, or retry on Wi-Fi.
           </p>
-        )}
+        ) : null}
 
-        {isHost && (
-          <Button size="lg" onClick={launch}>
+        {isHost ? (
+          <Button size="lg" disabled={liveCount < 2} onClick={launch}>
             Start match
           </Button>
+        ) : (
+          <p className="text-sm text-muted">The host starts the match.</p>
         )}
-        {!isHost && <p className="text-sm text-muted">The host starts the match.</p>}
       </div>
     </div>
   );

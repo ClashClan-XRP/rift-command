@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { MAP_META } from "@/game/maps";
 import { RACES, assetUrl } from "@/game/config";
 import type { Difficulty, GameType, MapId, RaceId, SlotConfig, SlotKind } from "@/game/types";
+import { markRoomLeader } from "@/components/lobby/Lobby";
 import { MatchView } from "@/components/game/MatchView";
 import type { MatchSetup } from "@/game/types";
 
@@ -89,7 +90,11 @@ export function HomeMenu() {
               <Button
                 size="lg"
                 variant="secondary"
-                onClick={() => nav({ to: "/room/$code", params: { code: roomCode() } })}
+                onClick={() => {
+                  const code = roomCode();
+                  markRoomLeader(code);
+                  nav({ to: "/room/$code", params: { code } });
+                }}
               >
                 <Plus className="size-4" />
                 Create room
